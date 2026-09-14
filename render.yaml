@@ -18,8 +18,7 @@ services:
           property: connectionString
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "3000"
+      
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET

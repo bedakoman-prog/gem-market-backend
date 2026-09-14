@@ -1,0 +1,389 @@
+// Modèle de données GEM Market — reprend exactement le diagramme ER
+// de la section 3 du cahier des charges (gem-market-backend-spec.md),
+// avec les précisions des sections 4 et 6 (rôles, séquestre, réservations).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ListingType {
+  bien
+  service
+  espace
+  emploi
+}
+
+enum JobKind {
+  offre
+  recherche
+}
+
+enum ListingStatus {
+  draft
+  active
+  rejected
+  closed
+}
+
+enum OrderStatus {
+  pending // commande créée, encaissement pas encore confirmé
+  paid_escrow // argent encaissé, séquestré en attente de confirmation acheteur
+  released // séquestre libéré, reversement vendeur confirmé
+  refunded
+  disputed
+}
+
+enum PaymentProvider {
+  cinetpay
+  paydunya
+}
+
+enum PaymentDirection {
+  collect // encaissement acheteur -> compte agrégateur GEM Market
+  payout // reversement compte agrégateur -> vendeur
+}
+
+enum PayoutStatus {
+  queued
+  sent
+  confirmed
+  failed
+}
+
+enum ShopSubscriptionStatus {
+  active
+  expired
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+}
+
+enum ReportStatus {
+  open
+  reviewed
+  dismissed
+}
+
+enum MediaType {
+  photo
+  video
+}
+
+// ---------------------------------------------------------------------------
+// Utilisateurs
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  email     String?  @unique
+  name      String
+  city      String?
+  verified  Boolean  @default(false)
+  isSeller  Boolean  @default(false) @map("is_seller")
+  // Modération (section 7) : accès aux endpoints /admin/*. Un vrai système de
+  // rôles (RBAC) est préférable dès que l'équipe de modération grandit ;
+  // ce booléen suffit pour la Phase 0.
+  isAdmin   Boolean  @default(false) @map("is_admin")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  listings           Listing[]
+  ordersAsBuyer      Order[]             @relation("OrdersAsBuyer")
+  ordersAsSeller     Order[]             @relation("OrdersAsSeller")
+  shopSubscriptions  ShopSubscription[]
+  reviewsAuthored    Review[]            @relation("ReviewsAuthored")
+  reviewsReceived    Review[]            @relation("ReviewsReceived")
+  conversationsBuyer Conversation[]      @relation("ConversationsAsBuyer")
+  conversationsSeller Conversation[]     @relation("ConversationsAsSeller")
+  messages           Message[]
+  reportsFiled       Report[]            @relation("ReportsFiled")
+  reportsReceived    Report[]            @relation("ReportsReceivedAsSeller")
+  bookings           Booking[]
+  refreshTokens      RefreshToken[]
+  otpCodes           OtpCode[]
+  payouts            Payout[]
+
+  @@map("users")
+}
+
+// Codes OTP envoyés par SMS pour l'inscription / connexion (section 4).
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id])
+  consumed  Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([phone])
+  @@map("otp_codes")
+}
+
+// Refresh tokens stockés côté serveur pour pouvoir les révoquer
+// (déconnexion à distance, compte suspendu) — section 4.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @map("token_hash")
+  revoked   Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+model Category {
+  id       String     @id
+  label    String
+  parentId String?    @map("parent_id")
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  listings Listing[]
+
+  @@map("categories")
+}
+
+model Listing {
+  id          String        @id @default(uuid())
+  sellerId    String        @map("seller_id")
+  seller      User          @relation(fields: [sellerId], references: [id])
+  categoryId  String        @map("category_id")
+  category    Category      @relation(fields: [categoryId], references: [id])
+  type        ListingType
+  jobKind     JobKind?      @map("job_kind") // uniquement pour type = emploi
+  title       String
+  description String
+  priceFcfa   Int           @map("price_fcfa")
+  status      ListingStatus @default(draft)
+  // Grille de specs affichée pour les annonces "espace" (ex. surface, capacité...)
+  specs       Json?
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  orders       Order[]
+  bookings     Booking[]
+  conversations Conversation[]
+  reports      Report[]
+  media        ListingMedia[]
+
+  @@index([categoryId])
+  @@index([sellerId])
+  @@index([type, status])
+  @@map("listings")
+}
+
+// Photos/vidéos d'une annonce (section 2 : "stockage compatible S3, ne doit
+// pas être stocké sur le serveur d'application lui-même" — voir src/media).
+// On ne stocke ici que l'URL finale et des métadonnées, jamais le binaire.
+model ListingMedia {
+  id        String    @id @default(uuid())
+  listingId String    @map("listing_id")
+  listing   Listing   @relation(fields: [listingId], references: [id])
+  type      MediaType
+  url       String
+  // Clé/chemin dans le bucket (ou sur disque en dev) — utile pour la suppression.
+  storageKey String   @map("storage_key")
+  position  Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([listingId])
+  @@map("listing_media")
+}
+
+// ---------------------------------------------------------------------------
+// Commandes (bien / service) — séquestre — section 6.2
+// ---------------------------------------------------------------------------
+
+model Order {
+  id               String      @id @default(uuid())
+  listingId        String      @map("listing_id")
+  listing          Listing     @relation(fields: [listingId], references: [id])
+  buyerId          String      @map("buyer_id")
+  buyer            User        @relation("OrdersAsBuyer", fields: [buyerId], references: [id])
+  sellerId         String      @map("seller_id")
+  seller           User        @relation("OrdersAsSeller", fields: [sellerId], references: [id])
+  amountFcfa       Int         @map("amount_fcfa")
+  platformFeeFcfa  Int         @map("platform_fee_fcfa")
+  status           OrderStatus @default(pending)
+  createdAt        DateTime    @default(now()) @map("created_at")
+  releasedAt       DateTime?   @map("released_at")
+  // Date limite avant libération automatique du séquestre (section 6.2, règle à valider produit)
+  autoReleaseAt    DateTime?   @map("auto_release_at")
+
+  paymentEvents PaymentEvent[]
+  payouts       Payout[]
+  review        Review?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("orders")
+}
+
+// Réservation d'un espace (hôtel, studio, bureau…) — paiement direct
+// sans séquestre, traité séparément des Orders (section 3, points d'attention).
+model Booking {
+  id          String        @id @default(uuid())
+  listingId   String        @map("listing_id")
+  listing     Listing       @relation(fields: [listingId], references: [id])
+  buyerId     String        @map("buyer_id")
+  buyer       User          @relation(fields: [buyerId], references: [id])
+  startDate   DateTime      @map("start_date")
+  endDate     DateTime      @map("end_date")
+  amountFcfa  Int           @map("amount_fcfa")
+  status      BookingStatus @default(pending)
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  paymentEvents PaymentEvent[]
+
+  @@index([listingId])
+  @@index([buyerId])
+  @@map("bookings")
+}
+
+// ---------------------------------------------------------------------------
+// Paiement — encaissement / reversement (section 6)
+// ---------------------------------------------------------------------------
+
+model PaymentEvent {
+  id                    String           @id @default(uuid())
+  orderId               String?          @map("order_id")
+  order                 Order?           @relation(fields: [orderId], references: [id])
+  bookingId             String?          @map("booking_id")
+  booking               Booking?         @relation(fields: [bookingId], references: [id])
+  shopSubscriptionId    String?          @map("shop_subscription_id")
+  shopSubscription      ShopSubscription? @relation(fields: [shopSubscriptionId], references: [id])
+  provider              PaymentProvider
+  providerTransactionId String?          @map("provider_transaction_id")
+  direction             PaymentDirection
+  rawStatus             String           @map("raw_status")
+  rawPayload            Json             @map("raw_payload")
+  // true seulement après ré-appel de l'endpoint de vérification du prestataire
+  // (jamais sur la seule foi du contenu du webhook — section 6.2).
+  verified              Boolean          @default(false)
+  receivedAt            DateTime         @default(now()) @map("received_at")
+
+  @@index([orderId])
+  @@index([provider, providerTransactionId])
+  @@map("payment_events")
+}
+
+model Payout {
+  id                 String       @id @default(uuid())
+  orderId            String       @map("order_id")
+  order              Order        @relation(fields: [orderId], references: [id])
+  sellerId           String       @map("seller_id")
+  seller             User         @relation(fields: [sellerId], references: [id])
+  amountFcfa         Int          @map("amount_fcfa")
+  provider           PaymentProvider
+  providerTransferId String?      @map("provider_transfer_id")
+  status             PayoutStatus @default(queued)
+  failureReason       String?     @map("failure_reason")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  confirmedAt        DateTime?    @map("confirmed_at")
+
+  @@index([sellerId])
+  @@index([status])
+  @@map("payouts")
+}
+
+// Abonnement "Boutique" vendeur — 1$/jour, jusqu'à 10 annonces actives
+// hors annonces "espace" (section 6.4).
+model ShopSubscription {
+  id              String                  @id @default(uuid())
+  sellerId        String                  @map("seller_id")
+  seller          User                    @relation(fields: [sellerId], references: [id])
+  startDate       DateTime                @map("start_date")
+  endDate         DateTime                @map("end_date")
+  pricePerDayUsd  Int                     @map("price_per_day_usd")
+  maxListings     Int                     @map("max_listings")
+  status          ShopSubscriptionStatus  @default(active)
+
+  paymentEvents PaymentEvent[]
+
+  @@index([sellerId])
+  @@map("shop_subscriptions")
+}
+
+// ---------------------------------------------------------------------------
+// Confiance : avis, messagerie, signalements
+// ---------------------------------------------------------------------------
+
+model Review {
+  id             String  @id @default(uuid())
+  orderId        String  @unique @map("order_id")
+  order          Order   @relation(fields: [orderId], references: [id])
+  authorId       String  @map("author_id")
+  author         User    @relation("ReviewsAuthored", fields: [authorId], references: [id])
+  targetSellerId String  @map("target_seller_id")
+  targetSeller   User    @relation("ReviewsReceived", fields: [targetSellerId], references: [id])
+  rating         Int
+  comment        String?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("reviews")
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id])
+  buyerId   String   @map("buyer_id")
+  buyer     User     @relation("ConversationsAsBuyer", fields: [buyerId], references: [id])
+  sellerId  String   @map("seller_id")
+  seller    User     @relation("ConversationsAsSeller", fields: [sellerId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  messages Message[]
+
+  @@unique([listingId, buyerId, sellerId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  authorId       String       @map("author_id")
+  author         User         @relation(fields: [authorId], references: [id])
+  body           String
+  sentAt         DateTime     @default(now()) @map("sent_at")
+
+  @@index([conversationId])
+  @@map("messages")
+}
+
+model Report {
+  id         String       @id @default(uuid())
+  reporterId String       @map("reporter_id")
+  reporter   User         @relation("ReportsFiled", fields: [reporterId], references: [id])
+  listingId  String?      @map("listing_id")
+  listing    Listing?     @relation(fields: [listingId], references: [id])
+  sellerId   String?      @map("seller_id")
+  seller     User?        @relation("ReportsReceivedAsSeller", fields: [sellerId], references: [id])
+  reason     String
+  status     ReportStatus @default(open)
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@map("reports")
+}

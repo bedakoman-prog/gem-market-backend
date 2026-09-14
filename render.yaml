@@ -1,0 +1,58 @@
+databases:
+  - name: gem-market-db
+    plan: free
+    databaseName: gem_market
+    user: gem
+
+services:
+  - type: web
+    name: gem-market-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gem-market-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 1h
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      - key: OTP_PROVIDER
+        value: console
+      - key: OTP_CODE_TTL_SECONDS
+        value: "300"
+      - key: PAYMENT_DEFAULT_PROVIDER
+        value: cinetpay
+      - key: CINETPAY_BASE_URL
+        value: https://api-checkout.cinetpay.com/v2
+      - key: CINETPAY_TRANSFER_BASE_URL
+        value: https://client.cinetpay.com/v1
+      - key: PAYDUNYA_BASE_URL
+        value: https://app.paydunya.com/api/v1
+      - key: PAYDUNYA_MODE
+        value: test
+      - key: PLATFORM_COMMISSION_RATE
+        value: "0.01"
+      - key: SHOP_PRICE_PER_DAY_USD
+        value: "1"
+      - key: SHOP_MAX_LISTINGS
+        value: "10"
+      - key: ORDER_AUTO_RELEASE_HOURS
+        value: "72"
+      - key: STORAGE_DRIVER
+        value: local
+      - key: MEDIA_MAX_IMAGE_MB
+        value: "8"
+      - key: MEDIA_MAX_VIDEO_MB
+        value: "50"

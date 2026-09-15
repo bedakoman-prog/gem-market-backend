@@ -15,6 +15,10 @@ import axios from 'axios';
 export interface CheckoutResult {
   providerTransactionId: string;
   paymentUrl: string;
+  // true quand aucune clé API n'est configurée : on n'a pas réellement appelé
+  // le prestataire, PaymentsService doit donc confirmer l'encaissement
+  // lui-même au lieu d'attendre un webhook qui ne viendra jamais.
+  simulated?: boolean;
 }
 
 export interface CheckStatusResult {
@@ -48,6 +52,7 @@ export class CinetpayService {
       return {
         providerTransactionId: params.transactionId,
         paymentUrl: `https://sandbox.local/simulated-checkout/${params.transactionId}`,
+        simulated: true,
       };
     }
 

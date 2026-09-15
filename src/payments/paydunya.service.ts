@@ -36,6 +36,7 @@ export class PaydunyaService {
       return {
         providerTransactionId: params.transactionId,
         paymentUrl: `https://sandbox.local/simulated-checkout/${params.transactionId}`,
+        simulated: true,
       };
     }
 

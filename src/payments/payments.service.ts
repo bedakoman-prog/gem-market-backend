@@ -53,16 +53,50 @@ export class PaymentsService {
         provider,
         providerTransactionId: result.providerTransactionId,
         direction: PaymentDirection.collect,
-        rawStatus: 'INITIATED',
+        rawStatus: result.simulated ? 'SIMULATED_AUTO_CONFIRMED' : 'INITIATED',
         rawPayload: { reference, amountFcfa },
-        verified: false,
+        verified: Boolean(result.simulated),
         ...(kind === 'order' ? { orderId: id } : {}),
         ...(kind === 'booking' ? { bookingId: id } : {}),
         ...(kind === 'shop' ? { shopSubscriptionId: id } : {}),
       },
     });
 
+    // Aucun prestataire de paiement réel n'est configuré (pas de clés API) :
+    // on ne peut pas attendre un webhook qui ne viendra jamais. On confirme
+    // donc l'encaissement immédiatement et on renvoie une URL de retour vers
+    // le front (relative, résolue par le navigateur sur son origine actuelle)
+    // au lieu du faux domaine "sandbox.local" qui bloquait indéfiniment la
+    // redirection côté client. À retirer dès qu'un vrai fournisseur
+    // (CinetPay/PayDunya) est configuré en production.
+    if (result.simulated) {
+      await this.markPayablePaid(kind, id);
+      return { provider, paymentUrl: this.simulatedReturnUrl(kind, id), reference };
+    }
+
     return { provider, paymentUrl: result.paymentUrl, reference };
+  }
+
+  private simulatedReturnUrl(kind: PayableKind, id: string): string {
+    if (kind === 'shop') return '/shop?activated=1';
+    if (kind === 'order') return '/orders?paid=1';
+    return `/profile?paid=1&booking=${id}`;
+  }
+
+  private async markPayablePaid(kind: PayableKind, id: string): Promise<void> {
+    if (kind === 'order') {
+      await this.prisma.order.update({
+        where: { id },
+        data: {
+          status: 'paid_escrow',
+          autoReleaseAt: new Date(Date.now() + this.autoReleaseHours() * 3600 * 1000),
+        },
+      });
+    } else if (kind === 'booking') {
+      await this.prisma.booking.update({ where: { id }, data: { status: 'confirmed' } });
+    } else if (kind === 'shop') {
+      await this.prisma.shopSubscription.update({ where: { id }, data: { status: 'active' } });
+    }
   }
 
   // POST /webhooks/cinetpay — jamais faire confiance au contenu du webhook
@@ -121,19 +155,7 @@ export class PaymentsService {
     const decoded = this.decodeRef(reference);
     if (!decoded) return { updated: false, rawStatus };
 
-    if (decoded.kind === 'order') {
-      await this.prisma.order.update({
-        where: { id: decoded.id },
-        data: {
-          status: 'paid_escrow',
-          autoReleaseAt: new Date(Date.now() + this.autoReleaseHours() * 3600 * 1000),
-        },
-      });
-    } else if (decoded.kind === 'booking') {
-      await this.prisma.booking.update({ where: { id: decoded.id }, data: { status: 'confirmed' } });
-    } else if (decoded.kind === 'shop') {
-      await this.prisma.shopSubscription.update({ where: { id: decoded.id }, data: { status: 'active' } });
-    }
+    await this.markPayablePaid(decoded.kind, decoded.id);
 
     return { updated: true, rawStatus, kind: decoded.kind, id: decoded.id };
   }

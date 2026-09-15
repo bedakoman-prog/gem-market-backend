@@ -3,7 +3,7 @@ WORKDIR /app
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci
+RUN npm install
 COPY tsconfig*.json nest-cli.json ./
 COPY src ./src
 RUN npx prisma generate

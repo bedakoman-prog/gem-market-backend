@@ -41,7 +41,10 @@ export class ListingsService {
     if (!listing) throw new NotFoundException('Annonce introuvable');
     return listing;
   }
-
+async findMine(sellerId: string) {
+      return this.prisma.listing.findMany({ where: { sellerId }, include: LISTING_INCLUDE, orderBy: { createdAt: 'desc' } });
+}
+  
   // POST /listings — la modération et la règle "boutique" (section 4, 6.4,
   // et point d'attention section 3 : les annonces "espace" ne comptent pas
   // dans la limite de 10) sont revalidées ici, jamais côté client seul.

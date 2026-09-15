@@ -23,7 +23,12 @@ export class ListingsController {
     return this.listingsService.findAll(filters);
   }
 
-  @Public()
+  @Get('listings/mine')
+    findMine(@CurrentUser() user: AuthenticatedUser) {
+          return this.listingsService.findMine(user.id);
+    }
+  
+    @Public()
   @Get('listings/:id')
   findOne(@Param('id') id: string) {
     return this.listingsService.findOne(id);

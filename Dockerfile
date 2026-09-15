@@ -7,6 +7,12 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
+# node:20-slim n'a pas le binaire `openssl`, dont Prisma se sert pour détecter
+# la version de libssl et choisir le bon moteur natif. Sans lui, Prisma devine
+# (mal) "openssl-1.1.x" et télécharge/utilise un moteur incompatible avec la
+# libssl 3.x de Debian bookworm — le moteur plante alors silencieusement.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
 COPY package*.json ./
 COPY prisma ./prisma
 # npm install (pas npm ci) : le lockfile committé peut être en retard d'une
@@ -23,6 +29,10 @@ RUN npm prune --omit=dev
 FROM node:20-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+
+# Même raison qu'à l'étape "build" : nécessaire pour que `prisma db push` (CMD
+# ci-dessous) détecte correctement libssl et charge le bon moteur natif.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

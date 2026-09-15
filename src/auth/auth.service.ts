@@ -1,9 +1,12 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { OtpService } from './otp.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
 
 interface TokenPair {
   accessToken: string;
@@ -54,6 +57,55 @@ export class AuthService {
       user = await this.prisma.user.create({
         data: { phone, name: name?.trim() || 'Nouvel utilisateur', verified: true },
       });
+    }
+
+    const tokens = await this.issueTokens(user.id, user.phone);
+    return { ...tokens, userId: user.id };
+  }
+
+  // POST /auth/register — inscription complète (email + mot de passe + identité
+  // + pays/ville/adresse), en plus du téléphone. Remplace la dépendance à l'OTP
+  // SMS pour l'inscription : aucun fournisseur SMS réel n'est branché en Phase 0
+  // (voir otp.service.ts), donc le code n'arrivait jamais aux utilisateurs.
+  async register(dto: RegisterDto): Promise<TokenPair & { userId: string }> {
+    const [existingEmail, existingPhone] = await Promise.all([
+      this.prisma.user.findUnique({ where: { email: dto.email } }),
+      this.prisma.user.findUnique({ where: { phone: dto.phone } }),
+    ]);
+    if (existingEmail) {
+      throw new ConflictException('Un compte existe déjà avec cet email');
+    }
+    if (existingPhone) {
+      throw new ConflictException('Un compte existe déjà avec ce numéro de téléphone');
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const user = await this.prisma.user.create({
+      data: {
+        phone: dto.phone,
+        email: dto.email,
+        passwordHash,
+        name: dto.name,
+        country: dto.country,
+        city: dto.city,
+        address: dto.address,
+        verified: true,
+      },
+    });
+
+    const tokens = await this.issueTokens(user.id, user.phone);
+    return { ...tokens, userId: user.id };
+  }
+
+  // POST /auth/login — connexion par email + mot de passe.
+  async login(dto: LoginDto): Promise<TokenPair & { userId: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
+    }
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
     const tokens = await this.issueTokens(user.id, user.phone);

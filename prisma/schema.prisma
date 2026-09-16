@@ -370,6 +370,10 @@ model Message {
   authorId       String       @map("author_id")
   author         User         @relation(fields: [authorId], references: [id])
   body           String
+  // true si sanitizeMessageBody() a masqué des coordonnées de contact
+  // externes (téléphone, email, réseau social) dans ce message — voir
+  // conversations/contact-filter.ts.
+  flagged        Boolean      @default(false)
   sentAt         DateTime     @default(now()) @map("sent_at")
 
   @@index([conversationId])

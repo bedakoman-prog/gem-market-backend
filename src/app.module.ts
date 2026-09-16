@@ -20,6 +20,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { ReportsModule } from './reports/reports.module';
 import { AdminModule } from './admin/admin.module';
 import { MediaModule } from './media/media.module';
+import { TranslateModule } from './translate/translate.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { MediaModule } from './media/media.module';
     ReportsModule,
     AdminModule,
     MediaModule,
+    TranslateModule,
   ],
   controllers: [AppController],
   providers: [

@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 interface TokenPair {
   accessToken: string;
@@ -107,6 +108,27 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
+
+    const tokens = await this.issueTokens(user.id, user.phone);
+    return { ...tokens, userId: user.id };
+  }
+
+  // POST /auth/reset-password — "mot de passe oublié". Aucun fournisseur
+  // d'e-mail réel n'est branché en Phase 0 (comme pour les SMS, voir
+  // otp.service.ts), donc on ne peut pas envoyer de lien de réinitialisation.
+  // À la place, l'identité est confirmée par la combinaison téléphone + email
+  // fournie à l'inscription (les deux sont obligatoires sur /auth/register),
+  // ce qui reste raisonnable pour ce MVP. Toutes les sessions existantes sont
+  // révoquées par sécurité une fois le mot de passe changé.
+  async resetPassword(dto: ResetPasswordDto): Promise<TokenPair & { userId: string }> {
+    const user = await this.prisma.user.findFirst({ where: { phone: dto.phone, email: dto.email } });
+    if (!user) {
+      throw new BadRequestException("Aucun compte ne correspond à ce numéro de téléphone et cet email.");
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await this.revokeAllForUser(user.id);
 
     const tokens = await this.issueTokens(user.id, user.phone);
     return { ...tokens, userId: user.id };

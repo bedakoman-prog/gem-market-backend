@@ -63,8 +63,17 @@ export class S3StorageService implements StorageService {
       throw new InternalServerErrorException("Échec de l'envoi du fichier vers le stockage objet.");
     }
 
-    const publicBase = this.config.get<string>('STORAGE_S3_PUBLIC_BASE_URL') ?? `https://${host}`;
-    return { url: `${publicBase}${reqPath}`, storageKey: key };
+    // Attention : STORAGE_S3_PUBLIC_BASE_URL pointe vers la racine du bucket
+    // (URL publique r2.dev, ou domaine personnalisé branché sur le bucket) —
+    // il ne faut donc JAMAIS y rajouter le nom du bucket comme dans reqPath
+    // (qui lui sert à l'API S3 "path-style"). Sans base publique configurée,
+    // on retombe sur l'URL de l'API S3 elle-même (accessible seulement si le
+    // token a les droits de lecture, donc surtout utile en développement).
+    const publicBase = this.config.get<string>('STORAGE_S3_PUBLIC_BASE_URL');
+    const url = publicBase
+      ? `${publicBase.replace(/\/$/, '')}/${key}`
+      : `https://${host}${reqPath}`;
+    return { url, storageKey: key };
   }
 
   async remove(storageKey: string): Promise<void> {

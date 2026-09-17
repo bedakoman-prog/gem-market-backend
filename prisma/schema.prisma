@@ -175,6 +175,9 @@ model Listing {
   category    Category      @relation(fields: [categoryId], references: [id])
   type        ListingType
   jobKind     JobKind?      @map("job_kind") // uniquement pour type = emploi
+  // Sous-catégorie de métier (ex. "batiment_travaux") — uniquement pour
+  // type = emploi. Référentiel : src/listings/job-sectors.ts.
+  jobSector   String?       @map("job_sector")
   title       String
   description String
   priceFcfa   Int           @map("price_fcfa")

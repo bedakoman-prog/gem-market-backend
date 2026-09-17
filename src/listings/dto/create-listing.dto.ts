@@ -10,6 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ListingType, JobKind } from '@prisma/client';
+import { JOB_SECTOR_IDS } from '../job-sectors';
 
 class SpecItemDto {
   @IsString()
@@ -29,6 +30,12 @@ export class CreateListingDto {
   @IsOptional()
   @IsEnum(JobKind)
   jobKind?: JobKind; // uniquement si type === 'emploi'
+
+  // Sous-catégorie de métier — uniquement si type === 'emploi'.
+  // Voir job-sectors.ts pour le référentiel complet.
+  @IsOptional()
+  @IsIn(JOB_SECTOR_IDS)
+  jobSector?: string;
 
   @IsString()
   title!: string;

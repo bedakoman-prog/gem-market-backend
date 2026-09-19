@@ -12,6 +12,7 @@ const ME_SELECT = {
   address: true,
   verified: true,
   isSeller: true,
+  isAdmin: true,
   createdAt: true,
 } as const;
 

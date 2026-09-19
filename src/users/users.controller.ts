@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Patch } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { UsersService } from './users.service';
@@ -16,10 +16,5 @@ export class UsersController {
   @Patch('me')
   updateMe(@CurrentUser() user: AuthenticatedUser, @Body() dto: UpdateMeDto) {
     return this.usersService.updateMe(user.id, dto);
-  }
-
-  @Post('bootstrap-admin')
-  bootstrapAdmin(@CurrentUser() user: AuthenticatedUser) {
-    return this.usersService.bootstrapAdmin(user.id);
   }
 }

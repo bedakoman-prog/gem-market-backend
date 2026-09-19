@@ -9,7 +9,14 @@ export class AdminService {
   findReports() {
     return this.prisma.report.findMany({
       where: { status: ReportStatus.open },
-      include: { listing: true, reporter: { select: { id: true, name: true } } },
+      include: {
+        listing: true,
+        reporter: { select: { id: true, name: true } },
+        // Un signalement peut viser un vendeur sans annonce précise (sellerId
+        // seul, cf. CreateReportDto) — sans ce include, ces signalements
+        // arrivaient à la modération sans aucun nom ni info exploitable.
+        seller: { select: { id: true, name: true, phone: true, verified: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
   }

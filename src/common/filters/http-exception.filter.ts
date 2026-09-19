@@ -15,10 +15,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
+    // exception.getResponse() renvoie soit une chaîne, soit l'objet complet
+    // { statusCode, message, error } construit par NestJS (ForbiddenException,
+    // NotFoundException, etc.) — il faut en extraire le texte, sinon le champ
+    // "message" ci-dessous devient un objet et s'affiche "[object Object]"
+    // côté client au lieu du vrai message d'erreur.
+    const exceptionResponse = exception instanceof HttpException ? exception.getResponse() : null;
     const message =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Erreur interne du serveur';
+      typeof exceptionResponse === 'string'
+        ? exceptionResponse
+        : exceptionResponse && typeof exceptionResponse === 'object' && 'message' in exceptionResponse
+          ? (exceptionResponse as { message: string | string[] }).message
+          : 'Erreur interne du serveur';
 
     if (status >= 500) {
       this.logger.error(`${request.method} ${request.url}`, exception instanceof Error ? exception.stack : String(exception));

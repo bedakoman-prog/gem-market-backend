@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { ListingStatus, ListingType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { findProhibited } from '../common/moderation/prohibited-items';
+import { PromoPeriodService } from '../common/promo/promo-period.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { SearchListingsDto } from './dto/search-listings.dto';
@@ -14,7 +15,10 @@ const LISTING_INCLUDE = {
 
 @Injectable()
 export class ListingsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private promoPeriod: PromoPeriodService,
+  ) {}
 
   async findAll(filters: SearchListingsDto) {
     const where: Prisma.ListingWhereInput = { status: ListingStatus.active };
@@ -121,8 +125,13 @@ export class ListingsService {
   }
 
   // Limite de 10 annonces actives (hors "espace") pour un vendeur sans
-  // abonnement Boutique actif — section 4 et 6.4.
+  // abonnement Boutique actif — section 4 et 6.4. Suspendue pendant la
+  // période promotionnelle de lancement (voir PromoPeriodService) : les
+  // vendeurs publient alors gratuitement et sans limite, le séquestre des
+  // paiements restant lui actif dès le lancement.
   private async assertShopQuota(sellerId: string) {
+    if (this.promoPeriod.isActive()) return;
+
     const activeSub = await this.prisma.shopSubscription.findFirst({
       where: { sellerId, status: 'active', endDate: { gt: new Date() } },
     });

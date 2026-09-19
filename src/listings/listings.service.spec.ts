@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ListingsService } from './listings.service';
 import { createPrismaMock } from '../../test/mocks/prisma.mock';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromoPeriodService } from '../common/promo/promo-period.service';
 
 // ListingType/ListingStatus sont des enums Prisma générés (valeurs chaîne
 // identiques aux littéraux ci-dessous) — on utilise directement les
@@ -11,11 +12,15 @@ const ESPACE = 'espace';
 
 describe('ListingsService', () => {
   let prisma: PrismaService;
+  let promoPeriod: PromoPeriodService;
   let service: ListingsService;
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    service = new ListingsService(prisma);
+    // Promo inactive par défaut (comportement actuel inchangé) — les tests
+    // dédiés à la période promotionnelle l'activent explicitement.
+    promoPeriod = { isActive: jest.fn().mockReturnValue(false) } as unknown as PromoPeriodService;
+    service = new ListingsService(prisma, promoPeriod);
   });
 
   describe('create', () => {
@@ -62,6 +67,26 @@ describe('ListingsService', () => {
           priceFcfa: 20000,
         }),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it("publie sans abonnement boutique pendant la période promotionnelle de lancement", async () => {
+      (promoPeriod.isActive as jest.Mock).mockReturnValue(true);
+      (prisma as any).shopSubscription.findFirst.mockResolvedValue(null); // aucun abonnement
+      (prisma as any).category.findUnique.mockResolvedValue({ id: 'mode' });
+      (prisma as any).listing.create.mockResolvedValue({ id: 'listing-2' });
+
+      await service.create('seller-1', {
+        categoryId: 'mode',
+        type: BIEN as any,
+        title: 'Robe wax',
+        description: 'Robe en wax faite main',
+        priceFcfa: 15000,
+      });
+
+      // La promo court-circuite le contrôle de quota avant même d'aller lire
+      // shopSubscription en base.
+      expect((prisma as any).shopSubscription.findFirst).not.toHaveBeenCalled();
+      expect((prisma as any).listing.create).toHaveBeenCalled();
     });
 
     it("n'applique pas la limite boutique aux annonces de type 'espace'", async () => {

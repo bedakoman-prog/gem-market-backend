@@ -3,15 +3,19 @@ import { ConfigService } from '@nestjs/config';
 import { ShopSubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
+import { PromoPeriodService } from '../common/promo/promo-period.service';
 
 // Abonnement "Boutique" — 1$/jour, jusqu'à 10 annonces actives hors "espace"
-// (section 6.4 du cahier des charges).
+// (section 6.4 du cahier des charges). Pendant la période promotionnelle de
+// lancement (voir PromoPeriodService), cette exigence est suspendue : le
+// vendeur publie gratuitement sans avoir à souscrire.
 @Injectable()
 export class ShopSubscriptionsService {
   constructor(
     private prisma: PrismaService,
     private payments: PaymentsService,
     private config: ConfigService,
+    private promoPeriod: PromoPeriodService,
   ) {}
 
   async status(sellerId: string) {
@@ -28,11 +32,19 @@ export class ShopSubscriptionsService {
       },
     });
 
+    const promoActive = this.promoPeriod.isActive();
+
     return {
+      // "active" reste vrai uniquement pour un VRAI abonnement payé — la
+      // gratuité de promo est signalée séparément via promoActive/promoEndsAt
+      // pour que le frontend puisse afficher un message distinct ("période
+      // de lancement gratuite" plutôt que "abonnement actif").
       active: Boolean(sub),
       endDate: sub?.endDate ?? null,
       maxListings: sub?.maxListings ?? 0,
       activeListingsCount,
+      promoActive,
+      promoEndsAt: this.promoPeriod.endsAt(),
     };
   }
 

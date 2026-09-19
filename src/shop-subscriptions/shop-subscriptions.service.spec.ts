@@ -3,17 +3,26 @@ import { PaymentsService } from '../payments/payments.service';
 import { createPrismaMock } from '../../test/mocks/prisma.mock';
 import { createConfigMock } from '../../test/mocks/config.mock';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromoPeriodService } from '../common/promo/promo-period.service';
 
 describe('ShopSubscriptionsService', () => {
   let prisma: PrismaService;
   let payments: jest.Mocked<Pick<PaymentsService, 'initiateCollect'>>;
+  let promoPeriod: PromoPeriodService;
   let service: ShopSubscriptionsService;
 
   beforeEach(() => {
     prisma = createPrismaMock();
     payments = { initiateCollect: jest.fn().mockResolvedValue({ provider: 'cinetpay', paymentUrl: 'https://pay.example', reference: 'shop_sub-1' }) };
     const config = createConfigMock({ SHOP_PRICE_PER_DAY_USD: '1', SHOP_MAX_LISTINGS: '10' });
-    service = new ShopSubscriptionsService(prisma, payments as unknown as PaymentsService, config);
+    // Promo inactive par défaut (pas de LAUNCH_DATE configurée) — le test
+    // dédié plus bas l'active explicitement.
+    promoPeriod = {
+      isActive: jest.fn().mockReturnValue(false),
+      endsAt: jest.fn().mockReturnValue(null),
+      startsAt: jest.fn().mockReturnValue(null),
+    } as unknown as PromoPeriodService;
+    service = new ShopSubscriptionsService(prisma, payments as unknown as PaymentsService, config, promoPeriod);
   });
 
   it("indique boutique inactive quand aucun abonnement n'est en cours", async () => {
@@ -24,6 +33,23 @@ describe('ShopSubscriptionsService', () => {
 
     expect(status.active).toBe(false);
     expect(status.maxListings).toBe(0);
+    expect(status.promoActive).toBe(false);
+  });
+
+  it('signale la période promotionnelle active séparément d’un vrai abonnement', async () => {
+    (prisma as any).shopSubscription.findFirst.mockResolvedValue(null);
+    (prisma as any).listing.count.mockResolvedValue(0);
+    const promoEnd = new Date('2027-02-01');
+    (promoPeriod.isActive as jest.Mock).mockReturnValue(true);
+    (promoPeriod.endsAt as jest.Mock).mockReturnValue(promoEnd);
+
+    const status = await service.status('seller-1');
+
+    // Pas d'abonnement payé réel ("active" reste false), mais la promo,
+    // elle, est bien signalée pour que le frontend affiche le bon message.
+    expect(status.active).toBe(false);
+    expect(status.promoActive).toBe(true);
+    expect(status.promoEndsAt).toBe(promoEnd);
   });
 
   it('crée un abonnement en attente de paiement (status "expired" jusqu’au webhook) et lance un encaissement', async () => {

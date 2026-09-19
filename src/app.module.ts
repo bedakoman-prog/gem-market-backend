@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
@@ -25,6 +26,9 @@ import { TranslateModule } from './translate/translate.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Active les tâches planifiées (@Cron) — utilisé par
+    // OrdersEscrowScheduler pour la libération automatique du séquestre.
+    ScheduleModule.forRoot(),
     // Limitation de débit globale (section 9) — resserrée spécifiquement sur
     // les endpoints OTP via @Throttle() dans AuthController.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),

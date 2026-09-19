@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ListingType, OrderStatus } from '@prisma/client';
+import { ListingType, Order, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 
@@ -8,7 +8,8 @@ import { PaymentsService } from '../payments/payments.service';
 // charges. Le flux complet :
 //   POST /orders                  -> pending, lance l'encaissement
 //   (webhook confirmé)            -> paid_escrow
-//   POST /orders/:id/confirm-receipt -> released + reversement vendeur
+//   POST /orders/:id/confirm-receipt -> released + reversement vendeur (l'acheteur confirme)
+//   OrdersEscrowScheduler         -> released + reversement vendeur (72h dépassées sans confirmation)
 @Injectable()
 export class OrdersService {
   constructor(
@@ -76,6 +77,22 @@ export class OrdersService {
       );
     }
 
+    const released = await this.releaseEscrow(order, sellerPhone);
+    if (!released) {
+      throw new BadRequestException(
+        "Le reversement au vendeur a échoué. La commande reste en séquestre ; contactez le support.",
+      );
+    }
+    return released;
+  }
+
+  // Libère le séquestre d'une commande : reversement net (montant - commission)
+  // vers le vendeur, puis passage en "released". Renvoie null si le reversement
+  // échoue — la commande reste en paid_escrow avec un Payout en échec, à
+  // traiter manuellement plutôt que de perdre la trace du paiement (section
+  // 6.2). Factorisé pour être appelé à la fois par confirmReceipt (l'acheteur
+  // confirme) et par releaseExpiredEscrows (libération automatique).
+  private async releaseEscrow(order: Order, sellerPhone: string): Promise<Order | null> {
     const netAmount = order.amountFcfa - order.platformFeeFcfa;
 
     const payout = await this.payments.payoutToSeller({
@@ -85,19 +102,36 @@ export class OrdersService {
       amountFcfa: netAmount,
     });
 
-    // Important (section 6.2) : on ne passe en "released" que si le
-    // reversement a bien été envoyé — sinon la commande reste en
-    // paid_escrow avec un Payout en échec, à traiter manuellement/en file
-    // de reprise plutôt que de perdre la trace du paiement.
-    if (payout.status === 'failed') {
-      throw new BadRequestException(
-        "Le reversement au vendeur a échoué. La commande reste en séquestre ; contactez le support.",
-      );
-    }
+    if (payout.status === 'failed') return null;
 
     return this.prisma.order.update({
-      where: { id: orderId },
+      where: { id: order.id },
       data: { status: OrderStatus.released, releasedAt: new Date() },
     });
+  }
+
+  // Libération automatique du séquestre : pour les commandes que l'acheteur
+  // n'a jamais confirmées, une fois le délai autoReleaseAt (72h par défaut,
+  // ORDER_AUTO_RELEASE_HOURS) dépassé. Comble le manque identifié dans le
+  // cadre de travail de l'administration ("prochaines évolutions techniques",
+  // priorité n°1) — jusqu'ici rien ne libérait ces commandes. Appelé par
+  // OrdersEscrowScheduler ; les échecs de reversement sont comptés, pas
+  // levés, pour ne pas interrompre le traitement des autres commandes dues.
+  async releaseExpiredEscrows(): Promise<{ released: number; failed: number }> {
+    const dueOrders = await this.prisma.order.findMany({
+      where: { status: OrderStatus.paid_escrow, autoReleaseAt: { lte: new Date() } },
+      include: { seller: true },
+    });
+
+    let released = 0;
+    let failed = 0;
+
+    for (const order of dueOrders) {
+      const result = await this.releaseEscrow(order, order.seller.phone);
+      if (result) released += 1;
+      else failed += 1;
+    }
+
+    return { released, failed };
   }
 }

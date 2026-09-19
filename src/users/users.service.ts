@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateMeDto } from './dto/update-me.dto';
 
@@ -48,23 +48,6 @@ export class UsersService {
         address: dto.address,
         isSeller: dto.isSeller,
       },
-      select: ME_SELECT,
-    });
-  }
-
-  // POST /users/bootstrap-admin - amorçage du tout premier compte admin, sans
-  // avoir besoin d'un accès à la base de données ou à un tableau de bord tiers.
-  // Ne fonctionne qu'une seule fois : dès qu'un admin existe déjà sur la
-  // plateforme, cette route redevient définitivement inopérante (403).
-  async bootstrapAdmin(id: string) {
-    const existingAdmin = await this.prisma.user.findFirst({ where: { isAdmin: true } });
-    if (existingAdmin) {
-      throw new ForbiddenException('Un compte administrateur existe déjà sur cette plateforme.');
-    }
-
-    return this.prisma.user.update({
-      where: { id },
-      data: { isAdmin: true },
       select: ME_SELECT,
     });
   }

@@ -110,6 +110,51 @@ export class OrdersService {
     });
   }
 
+    // POST /orders/:id/dispute — l'acheteur signale un problème (bien non
+    // conforme, service non rendu…) pendant que le séquestre est encore
+    // détenu. Fait sortir la commande du champ du scheduler automatique
+    // (releaseExpiredEscrows ne cible que paid_escrow) et la fait apparaître
+    // dans GET /admin/disputes pour arbitrage par la modération.
+    async openDispute(orderId: string, buyerId: string, reason: string) {
+          const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+          if (!order) throw new NotFoundException('Commande introuvable');
+          if (order.buyerId !== buyerId) throw new ForbiddenException('Cette commande ne vous appartient pas');
+          if (order.status !== OrderStatus.paid_escrow) {
+                  throw new BadRequestException(
+                            `Impossible d'ouvrir un litige : la commande est au statut "${order.status}" (attendu : paid_escrow).`,
+                          );
+          }
+
+          return this.prisma.order.update({
+                  where: { id: orderId },
+                  data: { status: OrderStatus.disputed, disputeReason: reason, disputedAt: new Date() },
+          });
+    }
+
+    // POST /admin/orders/:id/release — la modération tranche un litige en
+    // faveur du vendeur (ou force la libération d'une commande bloquée) :
+    // même logique de reversement que confirmReceipt, sans passer par
+    // l'acheteur. Accepte aussi bien paid_escrow (libération forcée) que
+    // disputed (résolution de litige).
+    async adminReleaseEscrow(orderId: string) {
+          const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { seller: true } });
+          if (!order) throw new NotFoundException('Commande introuvable');
+          if (order.status !== OrderStatus.paid_escrow && order.status !== OrderStatus.disputed) {
+                  throw new BadRequestException(
+                            `Impossible de libérer : la commande est au statut "${order.status}" (attendu : paid_escrow ou disputed).`,
+                          );
+          }
+
+          const released = await this.releaseEscrow(order, order.seller.phone);
+          if (!released) {
+                  throw new BadRequestException(
+                            'Le reversement au vendeur a échoué. La commande reste en séquestre ; réessayez ou traitez le Payout manuellement.',
+                          );
+          }
+          return released;
+    }
+  
+
   // Libération automatique du séquestre : pour les commandes que l'acheteur
   // n'a jamais confirmées, une fois le délai autoReleaseAt (72h par défaut,
   // ORDER_AUTO_RELEASE_HOURS) dépassé. Comble le manque identifié dans le

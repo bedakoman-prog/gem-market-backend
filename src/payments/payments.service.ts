@@ -207,4 +207,48 @@ export class PaymentsService {
       });
     }
   }
+  // POST /admin/orders/:id/refund — remboursement acheteur suite à un litige.
+    // Réutilise volontairement les mêmes méthodes de transfert que
+    // payoutToSeller : côté CinetPay/PayDunya, un reversement mobile money vers
+    // un numéro de téléphone est une opération unique, qu'elle crédite un
+    // vendeur ou un acheteur — seul le destinataire change.
+    async refundToBuyer(params: { orderId: string; buyerId: string; buyerPhone: string; amountFcfa: number; reason?: string }) {
+          const provider = this.defaultProvider();
+      const refund = await this.prisma.refund.create({
+        data: {
+          orderId: params.orderId,
+          buyerId: params.buyerId,
+          amountFcfa: params.amountFcfa,
+          provider,
+          status: PayoutStatus.queued,
+          reason: params.reason,
+        },
+      });
+
+  try {
+    const result =
+      provider === PaymentProvider.paydunya
+    ? await this.paydunya.disburseToSeller({
+      sellerAccountAlias: params.buyerPhone,
+      amountFcfa: params.amountFcfa,
+      clientTransferId: refund.id,
+    })
+      : await this.cinetpay.transferToSeller({
+        sellerPhone: params.buyerPhone,
+        amountFcfa: params.amountFcfa,
+        clientTransferId: refund.id,
+      });
+
+      return this.prisma.refund.update({
+        where: { id: refund.id },
+        data: { status: PayoutStatus.sent, providerTransferId: result.providerTransferId },
+      });
+  } catch (err) {
+    this.logger.error(`Échec du remboursement pour la commande ${params.orderId}`, err as Error);
+    return this.prisma.refund.update({
+      where: { id: refund.id },
+      data: { status: PayoutStatus.failed, failureReason: (err as Error).message },
+    });
+  }
+    }
 }

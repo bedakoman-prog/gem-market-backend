@@ -109,10 +109,10 @@ model User {
   verified  Boolean  @default(false)
   isSeller  Boolean  @default(false) @map("is_seller")
   // Modération (section 7). isAdmin reste en place pour la transition : un
-compte isAdmin=true garde l'accès admin même si role n'a pas encore été
-synchronisé (voir RolesGuard). PATCH /admin/users/:id/role met à jour les
-deux champs ensemble et devient le seul point d'écriture désormais — plus
-besoin d'accès direct à la base pour promouvoir/rétrograder un compte.
+// compte isAdmin=true garde l'accès admin même si role n'a pas encore été
+// synchronisé (voir RolesGuard). PATCH /admin/users/:id/role met à jour les
+// deux champs ensemble et devient le seul point d'écriture désormais — plus
+// besoin d'accès direct à la base pour promouvoir/rétrograder un compte.
 isAdmin   Boolean  @default(false) @map("is_admin")
 role      Role     @default(user)
   createdAt DateTime @default(now()) @map("created_at")

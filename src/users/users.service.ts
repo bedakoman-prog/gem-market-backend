@@ -13,6 +13,7 @@ const ME_SELECT = {
   verified: true,
   isSeller: true,
   isAdmin: true,
+  role: true,
   createdAt: true,
 } as const;
 

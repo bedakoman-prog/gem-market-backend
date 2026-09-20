@@ -1,16 +1,16 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { ListingStatus, OrderStatus, ReportStatus } from '@prisma/client';
+import { ListingStatus, OrderStatus, ReportStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { OrdersService } from '../orders/orders.service';
 
 @Injectable()
-  export class AdminService {
+export class AdminService {
   constructor(
     private prisma: PrismaService,
     private payments: PaymentsService,
     private orders: OrdersService,
-    ) {}
+  ) {}
 
 findReports() {
   return this.prisma.report.findMany({
@@ -46,22 +46,22 @@ findDisputedOrders() {
   });
 }
 
-                           async refundOrder(orderId: string, reason?: string) {
-                             const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { buyer: true } });
-                             if (!order) throw new NotFoundException('Commande introuvable');
-                             if (order.status !== OrderStatus.disputed && order.status !== OrderStatus.paid_escrow) {
-                               throw new BadRequestException(
-                                 `Impossible de rembourser : la commande est au statut "${order.status}" (attendu : paid_escrow ou disputed).`,
-                                 );
-                             }
+  async refundOrder(orderId: string, reason?: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { buyer: true } });
+    if (!order) throw new NotFoundException('Commande introuvable');
+    if (order.status !== OrderStatus.disputed && order.status !== OrderStatus.paid_escrow) {
+      throw new BadRequestException(
+        `Impossible de rembourser : la commande est au statut "${order.status}" (attendu : paid_escrow ou disputed).`,
+        );
+    }
 
-    const refund = await this.payments.refundToBuyer({
-      orderId: order.id,
-      buyerId: order.buyerId,
-      buyerPhone: order.buyer.phone,
-      amountFcfa: order.amountFcfa,
-      reason: reason ?? order.disputeReason ?? undefined,
-    });
+  const refund = await this.payments.refundToBuyer({
+    orderId: order.id,
+    buyerId: order.buyerId,
+    buyerPhone: order.buyer.phone,
+    amountFcfa: order.amountFcfa,
+    reason: reason ?? order.disputeReason ?? undefined,
+  });
 
   if (refund.status === 'failed') {
     throw new BadRequestException(
@@ -78,9 +78,23 @@ findDisputedOrders() {
   });
 
   return refund;
-                           }
+  }
 
-                             releaseOrder(orderId: string) {
-                               return this.orders.adminReleaseEscrow(orderId);
-                             }
+releaseOrder(orderId: string) {
+  return this.orders.adminReleaseEscrow(orderId);
+}
+
+// PATCH /admin/users/:id/role — seul point d'écriture des rôles désormais
+// (la route bootstrap-admin a été retirée pour raisons de sécurité). Met à
+// jour isAdmin en même temps que role : admin -> isAdmin=true, sinon false,
+// ce qui permet aussi de rétrograder proprement un compte isAdmin historique.
+async setUserRole(userId: string, role: Role) {
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('Utilisateur introuvable');
+  return this.prisma.user.update({
+    where: { id: userId },
+    data: { role, isAdmin: role === Role.admin },
+    select: { id: true, name: true, phone: true, role: true, isAdmin: true },
+  });
+}
 }

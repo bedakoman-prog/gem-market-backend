@@ -118,6 +118,7 @@ model User {
   refreshTokens      RefreshToken[]
   otpCodes           OtpCode[]
   payouts            Payout[]
+  refundsReceived    Refund[]
 
   @@map("users")
 }
@@ -235,15 +236,47 @@ model Order {
   releasedAt       DateTime?   @map("released_at")
   // Date limite avant libération automatique du séquestre (section 6.2, règle à valider produit)
   autoReleaseAt    DateTime?   @map("auto_release_at")
+  // Litige acheteur (POST /orders/:id/dispute) — motif libre, saisi une seule
+  // fois à l'ouverture. Tant que status = disputed, le scheduler de séquestre
+  // (orders-escrow.scheduler.ts, filtré sur paid_escrow) ignore la commande :
+  // aucune libération automatique tant que la modération n'a pas tranché.
+  disputeReason    String?     @map("dispute_reason")
+  disputedAt       DateTime?   @map("disputed_at")
 
   paymentEvents PaymentEvent[]
   payouts       Payout[]
+  refund        Refund?
   review        Review?
 
   @@index([buyerId])
   @@index([sellerId])
   @@index([status])
   @@map("orders")
+}
+
+// Remboursement acheteur suite à un litige (POST /admin/orders/:id/refund) —
+// symétrique de Payout (qui reverse le vendeur), mais vers l'acheteur.
+// Séparé de Payout plutôt que de rendre sellerId nullable dessus : évite de
+// toucher un modèle déjà en usage en production pour une relation optionnelle.
+model Refund {
+  id                 String       @id @default(uuid())
+  orderId            String       @unique @map("order_id")
+  order              Order        @relation(fields: [orderId], references: [id])
+  buyerId            String       @map("buyer_id")
+  buyer              User         @relation(fields: [buyerId], references: [id])
+  amountFcfa         Int          @map("amount_fcfa")
+  provider           PaymentProvider
+  providerTransferId String?      @map("provider_transfer_id")
+  status             PayoutStatus @default(queued)
+  // Motif renseigné par le modérateur au moment du remboursement (peut
+  // reprendre ou compléter Order.disputeReason).
+  reason             String?
+  failureReason      String?      @map("failure_reason")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  confirmedAt        DateTime?    @map("confirmed_at")
+
+  @@index([buyerId])
+  @@map("refunds")
 }
 
 // Réservation d'un espace (hôtel, studio, bureau…) — paiement direct

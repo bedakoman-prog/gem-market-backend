@@ -5,8 +5,11 @@ import { OrdersService } from './orders.service';
 import { OrdersEscrowScheduler } from './orders-escrow.scheduler';
 
 @Module({
-  imports: [PaymentsModule],
-  controllers: [OrdersController],
-  providers: [OrdersService, OrdersEscrowScheduler],
+    imports: [PaymentsModule],
+    controllers: [OrdersController],
+    providers: [OrdersService, OrdersEscrowScheduler],
+    // AdminModule a besoin de adminReleaseEscrow() pour résoudre un litige en
+    // faveur du vendeur (POST /admin/orders/:id/release).
+    exports: [OrdersService],
 })
-export class OrdersModule {}
+  export class OrdersModule {}

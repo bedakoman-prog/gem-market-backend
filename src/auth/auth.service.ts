@@ -59,6 +59,7 @@ export class AuthService {
         data: { phone, name: name?.trim() || 'Nouvel utilisateur', verified: true },
       });
     }
+    this.assertNotSuspended(user);
 
     const tokens = await this.issueTokens(user.id, user.phone);
     return { ...tokens, userId: user.id };
@@ -108,6 +109,7 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
+    this.assertNotSuspended(user);
 
     const tokens = await this.issueTokens(user.id, user.phone);
     return { ...tokens, userId: user.id };
@@ -125,6 +127,7 @@ export class AuthService {
     if (!user) {
       throw new BadRequestException("Aucun compte ne correspond à ce numéro de téléphone et cet email.");
     }
+    this.assertNotSuspended(user);
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
@@ -159,6 +162,17 @@ export class AuthService {
 
   async revokeAllForUser(userId: string): Promise<void> {
     await this.prisma.refreshToken.updateMany({ where: { userId, revoked: false }, data: { revoked: true } });
+  }
+
+  // Bloque toute émission de token (OTP, login, reset) pour un compte
+  // suspendu (voir AdminService.suspendUser). refresh() est déjà couvert
+  // séparément : la suspension révoque les refresh tokens existants.
+  private assertNotSuspended(user: { suspended: boolean; suspendedReason: string | null }): void {
+    if (user.suspended) {
+      throw new UnauthorizedException(
+        user.suspendedReason ? `Compte suspendu : ${user.suspendedReason}` : 'Compte suspendu',
+      );
+    }
   }
 
   private async issueTokens(userId: string, phone: string): Promise<TokenPair> {

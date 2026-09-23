@@ -117,6 +117,15 @@ isAdmin   Boolean  @default(false) @map("is_admin")
 role      Role     @default(user)
   createdAt DateTime @default(now()) @map("created_at")
 
+  // Suspension/bannissement (section 7). Bloque la connexion (OTP, mot de
+  // passe, refresh) et coupe l'accès immédiatement sur les requêtes déjà
+  // authentifiées (voir JwtStrategy — lecture DB fraîche à chaque requête,
+  // comme RolesGuard). POST /admin/users/:id/suspend révoque aussi tous les
+  // refresh tokens actifs (AuthService.revokeAllForUser).
+  suspended       Boolean   @default(false) @map("is_suspended")
+  suspendedReason String?   @map("suspended_reason")
+  suspendedAt     DateTime? @map("suspended_at")
+
   listings           Listing[]
   ordersAsBuyer      Order[]             @relation("OrdersAsBuyer")
   ordersAsSeller     Order[]             @relation("OrdersAsSeller")

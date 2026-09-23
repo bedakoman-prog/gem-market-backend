@@ -3,6 +3,7 @@ import { ListingStatus, OrderStatus, ReportStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { OrdersService } from '../orders/orders.service';
+import { AuthService } from '../auth/auth.service';
 
 @Injectable()
 export class AdminService {
@@ -10,6 +11,7 @@ export class AdminService {
     private prisma: PrismaService,
     private payments: PaymentsService,
     private orders: OrdersService,
+    private auth: AuthService,
   ) {}
 
 findReports() {
@@ -95,6 +97,44 @@ async setUserRole(userId: string, role: Role) {
     where: { id: userId },
     data: { role, isAdmin: role === Role.admin },
     select: { id: true, name: true, phone: true, role: true, isAdmin: true },
+  });
+}
+
+// POST /admin/users/:id/suspend — bloque la connexion (OTP, mot de passe,
+// refresh) et coupe l'accès immédiatement sur les sessions déjà ouvertes
+// (voir JwtStrategy). Réservé aux comptes "user" : un moderator/admin doit
+// d'abord être rétrogradé via PATCH /admin/users/:id/role (setUserRole)
+// avant de pouvoir être suspendu — évite qu'un moderator fasse taire un
+// admin (ou un autre moderator) via cette route.
+async suspendUser(userId: string, reason?: string) {
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('Utilisateur introuvable');
+
+  const effectiveRole = user.isAdmin ? Role.admin : user.role;
+  if (effectiveRole !== Role.user) {
+    throw new BadRequestException(
+      'Impossible de suspendre un compte moderator/admin : rétrogradez-le d\'abord via la gestion des rôles.',
+    );
+  }
+
+  const updated = await this.prisma.user.update({
+    where: { id: userId },
+    data: { suspended: true, suspendedReason: reason ?? null, suspendedAt: new Date() },
+    select: { id: true, name: true, phone: true, suspended: true, suspendedReason: true, suspendedAt: true },
+  });
+  await this.auth.revokeAllForUser(userId);
+  return updated;
+}
+
+// POST /admin/users/:id/unsuspend — lève la suspension, aucune session à
+// révoquer (l'accès était déjà coupé).
+async unsuspendUser(userId: string) {
+  const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new NotFoundException('Utilisateur introuvable');
+  return this.prisma.user.update({
+    where: { id: userId },
+    data: { suspended: false, suspendedReason: null, suspendedAt: null },
+    select: { id: true, name: true, phone: true, suspended: true },
   });
 }
 }

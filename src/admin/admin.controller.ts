@@ -4,6 +4,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { SetRoleDto } from './dto/set-role.dto';
+import { SuspendUserDto } from './dto/suspend-user.dto';
 
 @Controller('admin')
   @UseGuards(RolesGuard)
@@ -52,5 +53,20 @@ import { SetRoleDto } from './dto/set-role.dto';
   @Patch('users/:id/role')
   setUserRole(@Param('id') id: string, @Body() dto: SetRoleDto) {
     return this.adminService.setUserRole(id, dto.role);
+  }
+
+// Suspension/bannissement (section 7) : réservé aux comptes "user" (voir
+// AdminService.suspendUser) — niveau moderator, comme les autres actions de
+// modération de premier niveau (signalements, annonces).
+@Roles(Role.moderator)
+  @Post('users/:id/suspend')
+  suspendUser(@Param('id') id: string, @Body() dto: SuspendUserDto) {
+    return this.adminService.suspendUser(id, dto.reason);
+  }
+
+@Roles(Role.moderator)
+  @Post('users/:id/unsuspend')
+  unsuspendUser(@Param('id') id: string) {
+    return this.adminService.unsuspendUser(id);
   }
 }

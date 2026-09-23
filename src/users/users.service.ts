@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { getSellerRatings } from '../common/ratings/seller-ratings';
 import { UpdateMeDto } from './dto/update-me.dto';
 
 const ME_SELECT = {
@@ -24,7 +25,10 @@ export class UsersService {
   async me(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id }, select: ME_SELECT });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    // Note moyenne + nombre d'avis (section "avis clients sur le vendeur") —
+    // exposés aussi sur son propre profil, pas seulement sur ses annonces.
+    const ratings = await getSellerRatings(this.prisma, [id]);
+    return { ...user, ...(ratings.get(id) ?? { rating: null, ratingsCount: 0 }) };
   }
 
   // PATCH /users/me - profile editing ("Mes informations" screen).

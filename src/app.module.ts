@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ListingsModule } from './listings/listings.module';
+import { SellersModule } from './sellers/sellers.module';
 import { ShopSubscriptionsModule } from './shop-subscriptions/shop-subscriptions.module';
 import { OrdersModule } from './orders/orders.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -37,6 +38,7 @@ import { TranslateModule } from './translate/translate.module';
     UsersModule,
     CategoriesModule,
     ListingsModule,
+    SellersModule,
     ShopSubscriptionsModule,
     OrdersModule,
     BookingsModule,

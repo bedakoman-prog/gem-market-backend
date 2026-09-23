@@ -3,12 +3,13 @@ import { ListingStatus, ListingType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { findProhibited } from '../common/moderation/prohibited-items';
 import { PromoPeriodService } from '../common/promo/promo-period.service';
+import { getSellerRatings } from '../common/ratings/seller-ratings';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { SearchListingsDto } from './dto/search-listings.dto';
 
 const LISTING_INCLUDE = {
-  seller: { select: { id: true, name: true, city: true, verified: true, phone: true } },
+  seller: { select: { id: true, name: true, city: true, verified: true, phone: true, createdAt: true } },
   category: true,
   media: { orderBy: { position: 'asc' } },
 } satisfies Prisma.ListingInclude;
@@ -35,22 +36,37 @@ export class ListingsService {
       ];
     }
 
-    return this.prisma.listing.findMany({
+    const listings = await this.prisma.listing.findMany({
       where,
       include: LISTING_INCLUDE,
       orderBy: { createdAt: 'desc' },
       take: 60,
     });
+    return this.attachSellerRatings(listings);
   }
 
   async findOne(id: string) {
     const listing = await this.prisma.listing.findUnique({ where: { id }, include: LISTING_INCLUDE });
     if (!listing) throw new NotFoundException('Annonce introuvable');
-    return listing;
+    const [withRatings] = await this.attachSellerRatings([listing]);
+    return withRatings;
   }
 
   async findMine(sellerId: string) {
-    return this.prisma.listing.findMany({ where: { sellerId }, include: LISTING_INCLUDE, orderBy: { createdAt: 'desc' } });
+    const listings = await this.prisma.listing.findMany({ where: { sellerId }, include: LISTING_INCLUDE, orderBy: { createdAt: 'desc' } });
+    return this.attachSellerRatings(listings);
+  }
+
+  // GET /sellers/:id/listings — boutique publique d'un vendeur (point 2 de la
+  // feuille de route "nouvelles demandes") : uniquement les annonces actives,
+  // comme pour la recherche.
+  async findBySeller(sellerId: string) {
+    const listings = await this.prisma.listing.findMany({
+      where: { sellerId, status: ListingStatus.active },
+      include: LISTING_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+    });
+    return this.attachSellerRatings(listings);
   }
 
   // POST /listings — la modération et la règle "boutique" (section 4, 6.4,
@@ -152,5 +168,20 @@ export class ListingsService {
           : "Un abonnement Boutique actif est requis pour publier des annonces bien/service/emploi (voir POST /shop/subscribe).",
       );
     }
+  }
+
+  // Note moyenne + nombre d'avis du vendeur (section "avis clients sur le
+  // vendeur" de la feuille de route), affichés sur chaque annonce — voir
+  // common/ratings/seller-ratings.ts. Une seule requête groupée par lot
+  // d'annonces plutôt qu'un aller-retour base par annonce.
+  private async attachSellerRatings<T extends { seller?: { id: string } | null }>(items: T[]) {
+    const sellerIds = items.map((i) => i.seller?.id).filter((id): id is string => !!id);
+    const ratings = await getSellerRatings(this.prisma, sellerIds);
+    return items.map((item) => ({
+      ...item,
+      seller: item.seller
+        ? { ...item.seller, ...(ratings.get(item.seller.id) ?? { rating: null, ratingsCount: 0 }) }
+        : item.seller,
+    }));
   }
 }

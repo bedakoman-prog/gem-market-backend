@@ -52,6 +52,23 @@ export class ListingsService {
     return withRatings;
   }
 
+  // GET /listings/:id — consultation publique d'une annonce (page "Annonce" du
+  // frontend) : incrémente le compteur de vues à chaque appel. Volontairement
+  // séparé de findOne(), qui reste un lecture pure réutilisée en interne par
+  // update()/remove() (sinon éditer ou supprimer sa propre annonce compterait
+  // comme une vue).
+  async findOneAndCountView(id: string) {
+    try {
+      await this.prisma.listing.update({ where: { id }, data: { views: { increment: 1 } } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        throw new NotFoundException('Annonce introuvable');
+      }
+      throw e;
+    }
+    return this.findOne(id);
+  }
+
   async findMine(sellerId: string) {
     const listings = await this.prisma.listing.findMany({ where: { sellerId }, include: LISTING_INCLUDE, orderBy: { createdAt: 'desc' } });
     return this.attachSellerRatings(listings);

@@ -31,7 +31,7 @@ export class ListingsController {
     @Public()
   @Get('listings/:id')
   findOne(@Param('id') id: string) {
-    return this.listingsService.findOne(id);
+    return this.listingsService.findOneAndCountView(id);
   }
 
   @Post('listings')

@@ -208,6 +208,10 @@ model Listing {
   status      ListingStatus @default(draft)
   // Grille de specs affichée pour les annonces "espace" (ex. surface, capacité...)
   specs       Json?
+  // Compteur de vues (page "Annonce" du frontend) — incrémenté à chaque
+  // consultation publique via GET /listings/:id (voir ListingsService.findOneAndCountView),
+  // jamais par les appels internes (update/remove) qui réutilisent findOne().
+  views       Int           @default(0)
   createdAt   DateTime      @default(now()) @map("created_at")
 
   orders       Order[]

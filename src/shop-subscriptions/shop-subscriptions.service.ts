@@ -73,7 +73,7 @@ export class ShopSubscriptionsService {
       'shop',
       sub.id,
       amountFcfa,
-      `Abonnement Boutique GEM Market — ${days} jour(s)`,
+      `Abonnement Boutique TROUVE TOUT — ${days} jour(s)`,
       sellerPhone,
     );
 

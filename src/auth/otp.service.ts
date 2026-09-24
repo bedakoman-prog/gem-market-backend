@@ -39,6 +39,6 @@ export class OtpService {
   }
 
   async sendCode(phone: string, code: string): Promise<void> {
-    await this.sender.send(phone, `Votre code GEM Market : ${code} (valable ${Math.round(this.ttlSeconds / 60)} min)`);
+    await this.sender.send(phone, `Votre code TROUVE TOUT : ${code} (valable ${Math.round(this.ttlSeconds / 60)} min)`);
   }
 }

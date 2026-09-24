@@ -49,7 +49,7 @@ export class OrdersService {
       'order',
       order.id,
       order.amountFcfa,
-      `Achat GEM Market — ${listing.title}`,
+      `Achat TROUVE TOUT — ${listing.title}`,
       buyerPhone,
     );
 

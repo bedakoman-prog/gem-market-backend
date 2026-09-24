@@ -32,7 +32,7 @@ export class BookingsService {
       'booking',
       booking.id,
       amountFcfa,
-      `Réservation GEM Market — ${listing.title}`,
+      `Réservation TROUVE TOUT — ${listing.title}`,
       buyerPhone,
     );
 

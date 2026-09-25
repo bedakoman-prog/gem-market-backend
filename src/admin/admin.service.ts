@@ -20,7 +20,7 @@ findReports() {
           include: {
                   listing: true,
                   reporter: { select: { id: true, name: true } },
-                  seller: { select: { id: true, name: true, phone: true, verified: true } },
+                  seller: { select: { id: true, name: true, shopName: true, phone: true, verified: true } },
           },
           orderBy: { createdAt: 'asc' },
     });
@@ -73,7 +73,7 @@ findDisputedOrders() {
           include: {
                   listing: true,
                   buyer: { select: { id: true, name: true, phone: true } },
-                  seller: { select: { id: true, name: true, phone: true, verified: true } },
+                  seller: { select: { id: true, name: true, shopName: true, phone: true, verified: true } },
           },
           orderBy: { disputedAt: 'asc' },
     });

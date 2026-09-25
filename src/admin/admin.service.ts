@@ -36,6 +36,37 @@ async rejectListing(listingId: string) {
   return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.rejected } });
 }
 
+// GET /admin/listings/pending — file de pré-modération (voir ListingsService.create,
+// statut "draft" par défaut depuis la décision "pas de paiement pendant les 3 mois
+// de lancement, mais publication soumise à approbation"). Sert de garde-fou contre
+// les annonces abusives tant que le quota boutique payant est suspendu.
+findPendingListings() {
+  return this.prisma.listing.findMany({
+    where: { status: ListingStatus.draft },
+    include: {
+      seller: { select: { id: true, name: true, phone: true, verified: true } },
+      category: true,
+      media: { orderBy: { position: 'asc' } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+}
+
+// POST /admin/listings/:id/approve — fait passer une annonce en attente
+// ("draft") en "active" : elle devient alors visible dans la recherche
+// publique et sur la boutique du vendeur (voir ListingsService.findAll /
+// findBySeller, qui filtrent déjà sur "active").
+async approveListing(listingId: string) {
+  const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
+  if (!listing) throw new NotFoundException('Annonce introuvable');
+  if (listing.status !== ListingStatus.draft) {
+    throw new BadRequestException(
+      `Impossible d'approuver : l'annonce est au statut "${listing.status}" (attendu : draft).`,
+    );
+  }
+  return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.active } });
+}
+
 findDisputedOrders() {
   return this.prisma.order.findMany({
     where: { status: OrderStatus.disputed },

@@ -30,6 +30,18 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
   }
 
 @Roles(Role.moderator)
+  @Get('listings/pending')
+  pendingListings() {
+    return this.adminService.findPendingListings();
+  }
+
+@Roles(Role.moderator)
+  @Post('listings/:id/approve')
+  approveListing(@Param('id') id: string) {
+    return this.adminService.approveListing(id);
+  }
+
+@Roles(Role.moderator)
   @Get('disputes')
   disputes() {
     return this.adminService.findDisputedOrders();

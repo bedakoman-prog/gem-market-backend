@@ -7,6 +7,7 @@ import { getSellerRatings } from '../common/ratings/seller-ratings';
 const SELLER_PROFILE_SELECT = {
   id: true,
   name: true,
+  shopName: true,
   city: true,
   verified: true,
   isSeller: true,

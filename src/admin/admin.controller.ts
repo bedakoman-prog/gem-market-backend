@@ -1,15 +1,31 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { AdminService } from './admin.service';
 import { SetRoleDto } from './dto/set-role.dto';
 import { SuspendUserDto } from './dto/suspend-user.dto';
+import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 
 @Controller('admin')
   @UseGuards(RolesGuard)
   export class AdminController {
   constructor(private adminService: AdminService) {}
+
+// POST /admin/bootstrap — amorce le tout premier compte admin (aucune route
+// PATCH /admin/users/:id/role n'est utilisable tant qu'aucun admin n'existe,
+// puisqu'elle est elle-même réservée à un admin : sans ce point d'entrée,
+// personne ne pourrait jamais obtenir les droits d'administration). Protégé
+// par un secret (ADMIN_BOOTSTRAP_SECRET, à définir sur Render) ET seulement
+// tant qu'aucun compte admin n'existe déjà (AdminService.bootstrapFirstAdmin) :
+// une fois le premier admin créé, cette route devient définitivement inerte.
+// À retirer une fois le premier admin en place (voir suivi produit).
+@Public()
+  @Post('bootstrap')
+  bootstrap(@Headers('x-bootstrap-secret') secret: string, @Body() dto: BootstrapAdminDto) {
+    return this.adminService.bootstrapFirstAdmin(secret, dto.email);
+  }
 
 @Roles(Role.moderator)
   @Get('reports')

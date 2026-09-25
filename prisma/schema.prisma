@@ -103,6 +103,12 @@ model User {
   email        String?  @unique
   passwordHash String?  @map("password_hash")
   name         String
+  // Nom de boutique optionnel (section "vendeurs peuvent afficher un nom de
+  // boutique au lieu de leur nom personnel") : quand renseigné, c'est ce nom
+  // qui est montré aux acheteurs (annonces, fiche boutique, messagerie) à la
+  // place de `name`. `name` reste l'identité réelle du compte, toujours
+  // utilisée côté admin/support pour identifier la personne.
+  shopName     String?  @map("shop_name")
   country      String?
   city         String?
   address      String?

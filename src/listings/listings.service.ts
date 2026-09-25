@@ -86,9 +86,14 @@ export class ListingsService {
     return this.attachSellerRatings(listings);
   }
 
-  // POST /listings — la modération et la règle "boutique" (section 4, 6.4,
-  // et point d'attention section 3 : les annonces "espace" ne comptent pas
-  // dans la limite de 10) sont revalidées ici, jamais côté client seul.
+  // POST /listings — la détection de catégories interdites et la règle
+  // "boutique" (section 4, 6.4, et point d'attention section 3 : les
+  // annonces "espace" ne comptent pas dans la limite de 10) sont revalidées
+  // ici, jamais côté client seul. Le quota boutique est suspendu pendant la
+  // période promotionnelle de lancement (PromoPeriodService), mais la
+  // pré-modération manuelle ci-dessous (statut "draft") s'applique dans
+  // tous les cas, promo ou non : c'est le principal filtre anti-anomalies
+  // tant que la période de lancement est gratuite.
   async create(sellerId: string, dto: CreateListingDto) {
     const flaggedReason = findProhibited(`${dto.title} ${dto.description}`);
     if (flaggedReason) {
@@ -115,7 +120,15 @@ export class ListingsService {
         description: dto.description,
         priceFcfa: dto.priceFcfa,
         specs: dto.specs as unknown as Prisma.InputJsonValue,
-        status: ListingStatus.active, // MVP : pas de file de pré-modération manuelle avant mise en ligne
+        // Pré-modération obligatoire avant mise en ligne (décision produit,
+        // phase de lancement) : toute nouvelle annonce démarre en "draft" et
+        // n'apparaît ni dans la recherche (findAll) ni sur la boutique
+        // publique du vendeur (findBySeller), qui filtrent déjà sur "active".
+        // Un modérateur doit l'approuver via POST /admin/listings/:id/approve
+        // (file d'attente : GET /admin/listings/pending) avant qu'elle soit
+        // visible publiquement — le vendeur la voit dans GET /listings/mine
+        // avec ce statut en attendant.
+        status: ListingStatus.draft,
       },
       include: LISTING_INCLUDE,
     });

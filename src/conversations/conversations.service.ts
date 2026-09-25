@@ -14,7 +14,7 @@ import { sanitizeMessageBody } from './contact-filter';
 // contact externes (téléphone, email, réseaux sociaux) sont masquées avant
 // d'être enregistrées, pour que la conversation reste exploitable par GEM
 // Market en cas de litige.
-const PARTY_SELECT = { id: true, name: true, city: true, verified: true } as const;
+const PARTY_SELECT = { id: true, name: true, shopName: true, city: true, verified: true } as const;
 
 @Injectable()
 export class ConversationsService {

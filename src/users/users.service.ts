@@ -8,6 +8,7 @@ const ME_SELECT = {
   phone: true,
   email: true,
   name: true,
+  shopName: true,
   country: true,
   city: true,
   address: true,
@@ -47,6 +48,9 @@ export class UsersService {
       where: { id },
       data: {
         name: dto.name,
+        // "" (champ vidé côté formulaire) revient au nom personnel ; undefined
+        // (champ non envoyé) laisse la valeur en base inchangée.
+        shopName: dto.shopName === undefined ? undefined : dto.shopName.trim() || null,
         email: dto.email,
         country: dto.country,
         city: dto.city,

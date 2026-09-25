@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ListingStatus, OrderStatus, ReportStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -13,6 +13,33 @@ export class AdminService {
     private orders: OrdersService,
     private auth: AuthService,
   ) {}
+
+// Amorce le tout premier compte admin (voir AdminController.bootstrap) :
+// exige le secret ADMIN_BOOTSTRAP_SECRET (env var Render) ET qu'aucun compte
+// admin n'existe déjà, ce qui rend cette route inerte dès qu'un premier admin
+// a été créé — même avec le secret, elle refuse ensuite systématiquement.
+async bootstrapFirstAdmin(secret: string, email: string) {
+  const expected = process.env.ADMIN_BOOTSTRAP_SECRET;
+  if (!expected || secret !== expected) {
+    throw new ForbiddenException('Secret invalide.');
+  }
+
+  const adminCount = await this.prisma.user.count({
+    where: { OR: [{ role: Role.admin }, { isAdmin: true }] },
+  });
+  if (adminCount > 0) {
+    throw new BadRequestException("Un compte administrateur existe déjà : cette route est désormais inerte.");
+  }
+
+  const user = await this.prisma.user.findUnique({ where: { email } });
+  if (!user) throw new NotFoundException('Aucun compte avec cet email.');
+
+  return this.prisma.user.update({
+    where: { id: user.id },
+    data: { role: Role.admin, isAdmin: true },
+    select: { id: true, name: true, email: true, phone: true, role: true, isAdmin: true },
+  });
+}
 
 findReports() {
   return this.prisma.report.findMany({

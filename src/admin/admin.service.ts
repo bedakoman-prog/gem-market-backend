@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ListingStatus, OrderStatus, ReportStatus, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
@@ -6,142 +6,115 @@ import { OrdersService } from '../orders/orders.service';
 import { AuthService } from '../auth/auth.service';
 
 @Injectable()
-export class AdminService {
-  constructor(
-    private prisma: PrismaService,
-    private payments: PaymentsService,
-    private orders: OrdersService,
-    private auth: AuthService,
-  ) {}
-
-// Amorce le tout premier compte admin (voir AdminController.bootstrap) :
-// exige le secret ADMIN_BOOTSTRAP_SECRET (env var Render) ET qu'aucun compte
-// admin n'existe déjà, ce qui rend cette route inerte dès qu'un premier admin
-// a été créé — même avec le secret, elle refuse ensuite systématiquement.
-async bootstrapFirstAdmin(secret: string, email: string) {
-  const expected = process.env.ADMIN_BOOTSTRAP_SECRET;
-  if (!expected || secret !== expected) {
-    throw new ForbiddenException('Secret invalide.');
-  }
-
-  const adminCount = await this.prisma.user.count({
-    where: { OR: [{ role: Role.admin }, { isAdmin: true }] },
-  });
-  if (adminCount > 0) {
-    throw new BadRequestException("Un compte administrateur existe déjà : cette route est désormais inerte.");
-  }
-
-  const user = await this.prisma.user.findUnique({ where: { email } });
-  if (!user) throw new NotFoundException('Aucun compte avec cet email.');
-
-  return this.prisma.user.update({
-    where: { id: user.id },
-    data: { role: Role.admin, isAdmin: true },
-    select: { id: true, name: true, email: true, phone: true, role: true, isAdmin: true },
-  });
-}
+  export class AdminService {
+    constructor(
+          private prisma: PrismaService,
+          private payments: PaymentsService,
+          private orders: OrdersService,
+          private auth: AuthService,
+        ) {}
 
 findReports() {
-  return this.prisma.report.findMany({
-    where: { status: ReportStatus.open },
-    include: {
-      listing: true,
-      reporter: { select: { id: true, name: true } },
-      seller: { select: { id: true, name: true, phone: true, verified: true } },
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+    return this.prisma.report.findMany({
+          where: { status: ReportStatus.open },
+          include: {
+                  listing: true,
+                  reporter: { select: { id: true, name: true } },
+                  seller: { select: { id: true, name: true, phone: true, verified: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+    });
 }
 
 async reviewReport(reportId: string, status: 'reviewed' | 'dismissed') {
-  return this.prisma.report.update({ where: { id: reportId }, data: { status } });
+    return this.prisma.report.update({ where: { id: reportId }, data: { status } });
 }
 
 async rejectListing(listingId: string) {
-  const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
-  if (!listing) throw new NotFoundException('Annonce introuvable');
-  return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.rejected } });
+    const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) throw new NotFoundException('Annonce introuvable');
+    return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.rejected } });
 }
 
-// GET /admin/listings/pending — file de pré-modération (voir ListingsService.create,
-// statut "draft" par défaut depuis la décision "pas de paiement pendant les 3 mois
-// de lancement, mais publication soumise à approbation"). Sert de garde-fou contre
+// GET /admin/listings/pending - file de pre-moderation (voir ListingsService.create,
+// statut "draft" par defaut depuis la decision "pas de paiement pendant les 3 mois
+// de lancement, mais publication soumise a approbation"). Sert de garde-fou contre
 // les annonces abusives tant que le quota boutique payant est suspendu.
 findPendingListings() {
-  return this.prisma.listing.findMany({
-    where: { status: ListingStatus.draft },
-    include: {
-      seller: { select: { id: true, name: true, phone: true, verified: true } },
-      category: true,
-      media: { orderBy: { position: 'asc' } },
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+    return this.prisma.listing.findMany({
+          where: { status: ListingStatus.draft },
+          include: {
+                  seller: { select: { id: true, name: true, phone: true, verified: true } },
+                  category: true,
+                  media: { orderBy: { position: 'asc' } },
+          },
+          orderBy: { createdAt: 'asc' },
+    });
 }
 
-// POST /admin/listings/:id/approve — fait passer une annonce en attente
+// POST /admin/listings/:id/approve - fait passer une annonce en attente
 // ("draft") en "active" : elle devient alors visible dans la recherche
 // publique et sur la boutique du vendeur (voir ListingsService.findAll /
-// findBySeller, qui filtrent déjà sur "active").
+// findBySeller, qui filtrent deja sur "active").
 async approveListing(listingId: string) {
-  const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
-  if (!listing) throw new NotFoundException('Annonce introuvable');
-  if (listing.status !== ListingStatus.draft) {
-    throw new BadRequestException(
-      `Impossible d'approuver : l'annonce est au statut "${listing.status}" (attendu : draft).`,
-    );
-  }
-  return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.active } });
+    const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) throw new NotFoundException('Annonce introuvable');
+    if (listing.status !== ListingStatus.draft) {
+          throw new BadRequestException(
+                  `Impossible d'approuver : l'annonce est au statut "${listing.status}" (attendu : draft).`,
+                );
+    }
+    return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.active } });
 }
 
 findDisputedOrders() {
-  return this.prisma.order.findMany({
-    where: { status: OrderStatus.disputed },
-    include: {
-      listing: true,
-      buyer: { select: { id: true, name: true, phone: true } },
-      seller: { select: { id: true, name: true, phone: true, verified: true } },
-    },
-    orderBy: { disputedAt: 'asc' },
-  });
+    return this.prisma.order.findMany({
+          where: { status: OrderStatus.disputed },
+          include: {
+                  listing: true,
+                  buyer: { select: { id: true, name: true, phone: true } },
+                  seller: { select: { id: true, name: true, phone: true, verified: true } },
+          },
+          orderBy: { disputedAt: 'asc' },
+    });
 }
 
   async refundOrder(orderId: string, reason?: string) {
-    const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { buyer: true } });
-    if (!order) throw new NotFoundException('Commande introuvable');
-    if (order.status !== OrderStatus.disputed && order.status !== OrderStatus.paid_escrow) {
-      throw new BadRequestException(
-        `Impossible de rembourser : la commande est au statut "${order.status}" (attendu : paid_escrow ou disputed).`,
-        );
+        const order = await this.prisma.order.findUnique({ where: { id: orderId }, include: { buyer: true } });
+        if (!order) throw new NotFoundException('Commande introuvable');
+        if (order.status !== OrderStatus.disputed && order.status !== OrderStatus.paid_escrow) {
+                throw new BadRequestException(
+                          `Impossible de rembourser : la commande est au statut "${order.status}" (attendu : paid_escrow ou disputed).`,
+                          );
+        }
+
+    const refund = await this.payments.refundToBuyer({
+          orderId: order.id,
+          buyerId: order.buyerId,
+          buyerPhone: order.buyer.phone,
+          amountFcfa: order.amountFcfa,
+          reason: reason ?? order.disputeReason ?? undefined,
+    });
+
+    if (refund.status === 'failed') {
+          throw new BadRequestException(
+                  "Le remboursement a échoué. La commande reste en l'état ; contactez le prestataire de paiement.",
+                  );
     }
 
-  const refund = await this.payments.refundToBuyer({
-    orderId: order.id,
-    buyerId: order.buyerId,
-    buyerPhone: order.buyer.phone,
-    amountFcfa: order.amountFcfa,
-    reason: reason ?? order.disputeReason ?? undefined,
-  });
+    await this.prisma.order.update({
+          where: { id: order.id },
+          data: {
+                  status: OrderStatus.refunded,
+                  disputeReason: order.disputeReason ?? reason,
+          },
+    });
 
-  if (refund.status === 'failed') {
-    throw new BadRequestException(
-      "Le remboursement a échoué. La commande reste en l'état ; contactez le prestataire de paiement.",
-      );
-  }
-
-  await this.prisma.order.update({
-    where: { id: order.id },
-    data: {
-      status: OrderStatus.refunded,
-      disputeReason: order.disputeReason ?? reason,
-    },
-  });
-
-  return refund;
+    return refund;
   }
 
 releaseOrder(orderId: string) {
-  return this.orders.adminReleaseEscrow(orderId);
+    return this.orders.adminReleaseEscrow(orderId);
 }
 
 // PATCH /admin/users/:id/role — seul point d'écriture des rôles désormais
@@ -149,13 +122,13 @@ releaseOrder(orderId: string) {
 // jour isAdmin en même temps que role : admin -> isAdmin=true, sinon false,
 // ce qui permet aussi de rétrograder proprement un compte isAdmin historique.
 async setUserRole(userId: string, role: Role) {
-  const user = await this.prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new NotFoundException('Utilisateur introuvable');
-  return this.prisma.user.update({
-    where: { id: userId },
-    data: { role, isAdmin: role === Role.admin },
-    select: { id: true, name: true, phone: true, role: true, isAdmin: true },
-  });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    return this.prisma.user.update({
+          where: { id: userId },
+          data: { role, isAdmin: role === Role.admin },
+          select: { id: true, name: true, phone: true, role: true, isAdmin: true },
+    });
 }
 
 // POST /admin/users/:id/suspend — bloque la connexion (OTP, mot de passe,
@@ -165,34 +138,34 @@ async setUserRole(userId: string, role: Role) {
 // avant de pouvoir être suspendu — évite qu'un moderator fasse taire un
 // admin (ou un autre moderator) via cette route.
 async suspendUser(userId: string, reason?: string) {
-  const user = await this.prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new NotFoundException('Utilisateur introuvable');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
 
-  const effectiveRole = user.isAdmin ? Role.admin : user.role;
-  if (effectiveRole !== Role.user) {
-    throw new BadRequestException(
-      'Impossible de suspendre un compte moderator/admin : rétrogradez-le d\'abord via la gestion des rôles.',
-    );
-  }
+    const effectiveRole = user.isAdmin ? Role.admin : user.role;
+    if (effectiveRole !== Role.user) {
+          throw new BadRequestException(
+                  'Impossible de suspendre un compte moderator/admin : rétrogradez-le d\'abord via la gestion des rôles.',
+                );
+    }
 
-  const updated = await this.prisma.user.update({
-    where: { id: userId },
-    data: { suspended: true, suspendedReason: reason ?? null, suspendedAt: new Date() },
-    select: { id: true, name: true, phone: true, suspended: true, suspendedReason: true, suspendedAt: true },
-  });
-  await this.auth.revokeAllForUser(userId);
-  return updated;
+    const updated = await this.prisma.user.update({
+          where: { id: userId },
+          data: { suspended: true, suspendedReason: reason ?? null, suspendedAt: new Date() },
+          select: { id: true, name: true, phone: true, suspended: true, suspendedReason: true, suspendedAt: true },
+    });
+    await this.auth.revokeAllForUser(userId);
+    return updated;
 }
 
 // POST /admin/users/:id/unsuspend — lève la suspension, aucune session à
 // révoquer (l'accès était déjà coupé).
 async unsuspendUser(userId: string) {
-  const user = await this.prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new NotFoundException('Utilisateur introuvable');
-  return this.prisma.user.update({
-    where: { id: userId },
-    data: { suspended: false, suspendedReason: null, suspendedAt: null },
-    select: { id: true, name: true, phone: true, suspended: true },
-  });
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    return this.prisma.user.update({
+          where: { id: userId },
+          data: { suspended: false, suspendedReason: null, suspendedAt: null },
+          select: { id: true, name: true, phone: true, suspended: true },
+    });
 }
 }

@@ -6,6 +6,14 @@ export class UpdateMeDto {
   @MaxLength(120)
   name?: string;
 
+  // Nom de boutique affiché aux acheteurs à la place de `name` (annonces,
+  // fiche boutique, messagerie). Chaîne vide envoyée volontairement pour
+  // revenir au nom personnel : voir UsersService.updateMe.
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  shopName?: string;
+
   @IsOptional()
   @IsEmail()
   email?: string;

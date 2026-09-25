@@ -9,7 +9,7 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { SearchListingsDto } from './dto/search-listings.dto';
 
 const LISTING_INCLUDE = {
-  seller: { select: { id: true, name: true, city: true, verified: true, phone: true, createdAt: true } },
+  seller: { select: { id: true, name: true, shopName: true, city: true, verified: true, phone: true, createdAt: true } },
   category: true,
   media: { orderBy: { position: 'asc' } },
 } satisfies Prisma.ListingInclude;

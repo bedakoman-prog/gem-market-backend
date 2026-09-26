@@ -26,15 +26,27 @@ export class ListingsService {
 
     if (filters.category) where.categoryId = filters.category;
     if (filters.type) where.type = filters.type as ListingType;
-    // Sous-filtre générique (section 5) — utilisé aujourd'hui pour le secteur
-    // de métier des annonces "emploi" (voir job-sectors.ts).
-    if (filters.sub) where.jobSector = filters.sub;
+
+    // `where.OR` est utilisé à la fois par la recherche texte (q) et par le
+    // sous-filtre générique (sub) — on les combine via `where.AND` pour que
+    // les deux OR restent indépendants au lieu de s'écraser l'un l'autre.
+    const andConditions: Prisma.ListingWhereInput[] = [];
     if (filters.q) {
-      where.OR = [
-        { title: { contains: filters.q, mode: 'insensitive' } },
-        { description: { contains: filters.q, mode: 'insensitive' } },
-      ];
+      andConditions.push({
+        OR: [
+          { title: { contains: filters.q, mode: 'insensitive' } },
+          { description: { contains: filters.q, mode: 'insensitive' } },
+        ],
+      });
     }
+    // Sous-filtre générique (section 5) — secteur de métier pour les annonces
+    // "emploi" (job-sectors.ts) ou type de prestation pour les annonces
+    // "services" (service-types.ts). Un seul des deux champs est renseigné
+    // selon la catégorie de l'annonce, d'où le OR.
+    if (filters.sub) {
+      andConditions.push({ OR: [{ jobSector: filters.sub }, { serviceType: filters.sub }] });
+    }
+    if (andConditions.length) where.AND = andConditions;
 
     const listings = await this.prisma.listing.findMany({
       where,
@@ -116,6 +128,7 @@ export class ListingsService {
         type: dto.type,
         jobKind: dto.jobKind,
         jobSector: dto.jobSector,
+        serviceType: dto.serviceType,
         title: dto.title,
         description: dto.description,
         priceFcfa: dto.priceFcfa,
@@ -154,6 +167,7 @@ export class ListingsService {
         type: dto.type,
         jobKind: dto.jobKind,
         jobSector: dto.jobSector,
+        serviceType: dto.serviceType,
         title: dto.title,
         description: dto.description,
         priceFcfa: dto.priceFcfa,

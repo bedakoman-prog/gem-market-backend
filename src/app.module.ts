@@ -23,6 +23,7 @@ import { ReportsModule } from './reports/reports.module';
 import { AdminModule } from './admin/admin.module';
 import { MediaModule } from './media/media.module';
 import { TranslateModule } from './translate/translate.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { TranslateModule } from './translate/translate.module';
     AdminModule,
     MediaModule,
     TranslateModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

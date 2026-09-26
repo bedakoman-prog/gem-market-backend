@@ -10,10 +10,15 @@ export interface ProhibitedCategory {
 
 export const PROHIBITED_ITEMS: ProhibitedCategory[] = [
   {
+    // Volontairement ciblé sur le médicament lui-même (nécessite une
+    // prescription/est un produit pharmaceutique réglementé), pas sur le
+    // matériel médical ou paramédical vendu librement (sparadrap, seringues,
+    // compresses...) ni sur les compléments alimentaires — qui eux restent
+    // autorisés même si leur description mentionne la pharmacie comme canal
+    // de vente ou se présente sous forme de comprimés/gélules.
     label: 'Produits pharmaceutiques et médicaments',
     keywords: [
-      'medicament', 'medicaments', 'pharmaceutique', 'pharmaceutiques', 'pharmacie',
-      'comprime', 'comprimes', 'gelule', 'gelules', 'antibiotique', 'antibiotiques',
+      'medicament', 'medicaments', 'antibiotique', 'antibiotiques',
       'ordonnance', 'anxiolytique', 'antidouleur', 'tramadol', 'morphine',
     ],
   },

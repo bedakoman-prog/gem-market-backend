@@ -14,6 +14,13 @@ export class ConversationsController {
     return this.conversationsService.findMine(user.id);
   }
 
+  // Doit rester déclaré avant ':id/messages' etc. pour ne pas être capté par
+  // une éventuelle future route ':id' générique.
+  @Get('unread-count')
+  unreadCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversationsService.unreadCount(user.id);
+  }
+
   @Post()
   start(@CurrentUser() user: AuthenticatedUser, @Body() dto: StartConversationDto) {
     return this.conversationsService.start(user.id, dto.listingId, dto.body);
@@ -27,5 +34,10 @@ export class ConversationsController {
   @Post(':id/messages')
   postMessage(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string, @Body() dto: CreateMessageDto) {
     return this.conversationsService.postMessage(id, user.id, dto.body);
+  }
+
+  @Post(':id/read')
+  markRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.conversationsService.markRead(id, user.id);
   }
 }

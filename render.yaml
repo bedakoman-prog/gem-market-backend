@@ -50,7 +50,7 @@ services:
       - key: ORDER_AUTO_RELEASE_HOURS
         value: "72"
       - key: STORAGE_DRIVER
-        value: local
+        value: s3
       - key: MEDIA_MAX_IMAGE_MB
         value: "8"
       - key: MEDIA_MAX_VIDEO_MB

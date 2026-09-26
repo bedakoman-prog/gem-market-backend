@@ -8,6 +8,7 @@ const SELLER_PROFILE_SELECT = {
   id: true,
   name: true,
   shopName: true,
+  country: true,
   city: true,
   verified: true,
   isSeller: true,

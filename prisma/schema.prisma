@@ -208,6 +208,9 @@ model Listing {
   // Sous-catégorie de métier (ex. "batiment_travaux") — uniquement pour
   // type = emploi. Référentiel : src/listings/job-sectors.ts.
   jobSector   String?       @map("job_sector")
+  // Sous-catégorie de prestation (ex. "plomberie") — uniquement pour
+  // categoryId = "services". Référentiel : src/listings/service-types.ts.
+  serviceType String?       @map("service_type")
   title       String
   description String
   priceFcfa   Int           @map("price_fcfa")

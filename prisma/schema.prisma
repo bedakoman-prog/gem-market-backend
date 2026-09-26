@@ -148,8 +148,28 @@ role      Role     @default(user)
   otpCodes           OtpCode[]
   payouts            Payout[]
   refundsReceived    Refund[]
+  pushSubscriptions  PushSubscription[]
 
   @@map("users")
+}
+
+// Abonnements Web Push (notifications navigateur) — section 5 : prévenir
+// l'autre partie d'un nouveau message de messagerie, y compris quand l'appli
+// n'est pas ouverte. Un même utilisateur peut avoir plusieurs abonnements
+// (plusieurs appareils/navigateurs) ; endpoint identifie l'appareil de façon
+// unique côté navigateur, donc @unique sert de clé d'upsert (voir
+// NotificationsController.subscribe).
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // Codes OTP envoyés par SMS pour l'inscription / connexion (section 4).
@@ -428,6 +448,12 @@ model Conversation {
   sellerId  String   @map("seller_id")
   seller    User     @relation("ConversationsAsSeller", fields: [sellerId], references: [id])
   createdAt DateTime @default(now()) @map("created_at")
+  // Dernière lecture du fil par chacune des deux parties (POST
+  // /conversations/:id/read) — sert à calculer les messages non lus (badge
+  // "Messages" de la nav, section 5). null tant que la partie n'a jamais
+  // ouvert la conversation.
+  buyerLastReadAt  DateTime? @map("buyer_last_read_at")
+  sellerLastReadAt DateTime? @map("seller_last_read_at")
 
   messages Message[]
 

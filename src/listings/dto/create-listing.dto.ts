@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { ListingType, JobKind } from '@prisma/client';
 import { JOB_SECTOR_IDS } from '../job-sectors';
+import { SERVICE_TYPE_IDS } from '../service-types';
 
 class SpecItemDto {
   @IsString()
@@ -36,6 +37,12 @@ export class CreateListingDto {
   @IsOptional()
   @IsIn(JOB_SECTOR_IDS)
   jobSector?: string;
+
+  // Sous-catégorie de prestation — uniquement si categoryId === 'services'.
+  // Voir service-types.ts pour le référentiel complet.
+  @IsOptional()
+  @IsIn(SERVICE_TYPE_IDS)
+  serviceType?: string;
 
   @IsString()
   title!: string;

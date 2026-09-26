@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { ConversationsService } from './conversations.service';
@@ -39,5 +39,24 @@ export class ConversationsController {
   @Post(':id/read')
   markRead(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.conversationsService.markRead(id, user.id);
+  }
+
+  @Patch(':id/messages/:messageId')
+  editMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() dto: CreateMessageDto,
+  ) {
+    return this.conversationsService.editMessage(id, messageId, user.id, dto.body);
+  }
+
+  @Delete(':id/messages/:messageId')
+  deleteMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.conversationsService.deleteMessage(id, messageId, user.id);
   }
 }

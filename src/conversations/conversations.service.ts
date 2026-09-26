@@ -28,6 +28,28 @@ interface ConversationForNotify {
   listing?: { title: string } | null;
 }
 
+interface RawMessage {
+  id: string;
+  conversationId: string;
+  authorId: string;
+  body: string;
+  flagged: boolean;
+  sentAt: Date;
+  editedAt: Date | null;
+  deletedAt: Date | null;
+}
+
+type PublicMessage<T extends RawMessage> = Omit<T, 'body'> & { body: string | null };
+
+// Un message supprimé garde son texte original en base (voir schema.prisma,
+// commentaire sur Message.deletedAt) mais ne doit plus jamais ressortir par
+// l'API une fois deletedAt renseigné — c'est ce mapping qui l'efface côté
+// lecture, pour tous les points d'entrée qui renvoient des messages
+// (findMessages, findMine, et les réponses de start()/postMessage()).
+function toPublicMessage<T extends RawMessage>(m: T): PublicMessage<T> {
+  return { ...m, body: m.deletedAt ? null : m.body };
+}
+
 @Injectable()
 export class ConversationsService {
   constructor(
@@ -52,7 +74,11 @@ export class ConversationsService {
     // message doit remonter en tête, même si la conversation elle-même est
     // ancienne — plus utile pour retrouver ce qu'il reste à lire.
     return conversations
-      .map((c) => ({ ...c, myLastReadAt: c.buyerId === userId ? c.buyerLastReadAt : c.sellerLastReadAt }))
+      .map((c) => ({
+        ...c,
+        myLastReadAt: c.buyerId === userId ? c.buyerLastReadAt : c.sellerLastReadAt,
+        messages: c.messages.map((m) => toPublicMessage(m)),
+      }))
       .sort((a, b) => {
         const aDate = a.messages[0]?.sentAt ?? a.createdAt;
         const bDate = b.messages[0]?.sentAt ?? b.createdAt;
@@ -115,7 +141,42 @@ export class ConversationsService {
     }
 
     const messages = await this.prisma.message.findMany({ where: { conversationId }, orderBy: { sentAt: 'asc' } });
-    return { conversation, messages };
+    return { conversation, messages: messages.map((m) => toPublicMessage(m)) };
+  }
+
+  // Édition d'un message par son auteur (section 5). Le texte réédité repasse
+  // par le même filtre de coordonnées que la création (sanitizeMessageBody)
+  // — on ne fait pas confiance à un contournement client sur l'édition non
+  // plus que sur la publication initiale.
+  async editMessage(conversationId: string, messageId: string, requesterId: string, rawBody: string) {
+    const message = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.conversationId !== conversationId) throw new NotFoundException('Message introuvable');
+    if (message.authorId !== requesterId) {
+      throw new ForbiddenException('Vous ne pouvez modifier que vos propres messages');
+    }
+    if (message.deletedAt) throw new BadRequestException('Ce message a été supprimé');
+
+    const { body, flagged } = sanitizeMessageBody(rawBody);
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { body, flagged, editedAt: new Date() },
+    });
+    return toPublicMessage(updated);
+  }
+
+  // Suppression "douce" par l'auteur : voir schema.prisma (Message.deletedAt)
+  // pour le choix de conserver le texte original en base tout en l'effaçant
+  // de toute réponse API dès cet instant.
+  async deleteMessage(conversationId: string, messageId: string, requesterId: string) {
+    const message = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!message || message.conversationId !== conversationId) throw new NotFoundException('Message introuvable');
+    if (message.authorId !== requesterId) {
+      throw new ForbiddenException('Vous ne pouvez supprimer que vos propres messages');
+    }
+    if (!message.deletedAt) {
+      await this.prisma.message.update({ where: { id: messageId }, data: { deletedAt: new Date() } });
+    }
+    return { ok: true };
   }
 
   // Marque le fil comme lu par requesterId (voir bouton/effet "j'ouvre la

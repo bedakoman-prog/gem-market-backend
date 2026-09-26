@@ -473,6 +473,16 @@ model Message {
   // conversations/contact-filter.ts.
   flagged        Boolean      @default(false)
   sentAt         DateTime     @default(now()) @map("sent_at")
+  // Édition (PATCH .../messages/:messageId) : horodatage de la dernière
+  // modification, affiché comme "modifié" côté frontend. null si jamais édité.
+  editedAt       DateTime?    @map("edited_at")
+  // Suppression "douce" (DELETE .../messages/:messageId) : le texte original
+  // reste en base (jamais écrasé) — cohérent avec le choix déjà fait pour la
+  // modération (section 5, "toujours revalider côté serveur") de garder
+  // l'historique exploitable en cas de litige — mais body est renvoyé à null
+  // par l'API dès que deletedAt est renseigné (voir toPublicMessage) : plus
+  // personne ne voit le contenu, seulement "Message supprimé".
+  deletedAt      DateTime?    @map("deleted_at")
 
   @@index([conversationId])
   @@map("messages")

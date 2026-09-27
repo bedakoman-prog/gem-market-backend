@@ -136,6 +136,7 @@ role      Role     @default(user)
   ordersAsBuyer      Order[]             @relation("OrdersAsBuyer")
   ordersAsSeller     Order[]             @relation("OrdersAsSeller")
   shopSubscriptions  ShopSubscription[]
+  shopExtraSlots     ShopExtraSlot[]
   reviewsAuthored    Review[]            @relation("ReviewsAuthored")
   reviewsReceived    Review[]            @relation("ReviewsReceived")
   conversationsBuyer Conversation[]      @relation("ConversationsAsBuyer")
@@ -368,6 +369,8 @@ model PaymentEvent {
   booking               Booking?         @relation(fields: [bookingId], references: [id])
   shopSubscriptionId    String?          @map("shop_subscription_id")
   shopSubscription      ShopSubscription? @relation(fields: [shopSubscriptionId], references: [id])
+  shopExtraSlotId       String?          @map("shop_extra_slot_id")
+  shopExtraSlot         ShopExtraSlot?   @relation(fields: [shopExtraSlotId], references: [id])
   provider              PaymentProvider
   providerTransactionId String?          @map("provider_transaction_id")
   direction             PaymentDirection
@@ -418,6 +421,32 @@ model ShopSubscription {
 
   @@index([sellerId])
   @@map("shop_subscriptions")
+}
+
+// Capacité supplémentaire au-delà des 10 annonces incluses dans l'abonnement
+// Boutique de base — 0,5$/jour ET par annonce supplémentaire. Distinct de
+// ShopSubscription : un vendeur peut cumuler plusieurs achats de capacité
+// (quantités et durées différentes) ; la limite effective d'annonces actives
+// (voir ListingsService.assertShopQuota) est la somme du maxListings de
+// l'abonnement de base + la quantité de tous les ShopExtraSlot actifs et non
+// expirés. Nécessite toujours un abonnement de base actif (voir
+// ShopSubscriptionsService.subscribeExtra) : on ne vend pas de capacité
+// supplémentaire seule. Comme pour ShopSubscription, ceci reste suspendu
+// pendant la période promotionnelle de lancement (PromoPeriodService).
+model ShopExtraSlot {
+  id             String                 @id @default(uuid())
+  sellerId       String                 @map("seller_id")
+  seller         User                   @relation(fields: [sellerId], references: [id])
+  quantity       Int // nombre d'annonces supplémentaires achetées (au-delà des 10 incluses)
+  startDate      DateTime               @map("start_date")
+  endDate        DateTime               @map("end_date")
+  pricePerDayUsd Float                  @map("price_per_day_usd")
+  status         ShopSubscriptionStatus @default(active)
+
+  paymentEvents PaymentEvent[]
+
+  @@index([sellerId])
+  @@map("shop_extra_slots")
 }
 
 // ---------------------------------------------------------------------------

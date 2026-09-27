@@ -8,7 +8,7 @@ import { PaydunyaService } from './paydunya.service';
 // Références de transaction encodées "<type>_<id>" pour retrouver, à la
 // réception d'un webhook, quelle commande / réservation / abonnement est
 // concerné(e) — voir section 6.2 du cahier des charges.
-type PayableKind = 'order' | 'booking' | 'shop';
+type PayableKind = 'order' | 'booking' | 'shop' | 'shop_extra';
 
 @Injectable()
 export class PaymentsService {
@@ -30,7 +30,9 @@ export class PaymentsService {
   }
 
   private decodeRef(ref: string): { kind: PayableKind; id: string } | null {
-    const match = /^(order|booking|shop)_(.+)$/.exec(ref);
+    // "shop_extra" doit être testé avant "shop" dans l'alternative : sinon la
+    // regex s'arrête sur "shop" et fait déborder "extra_" dans l'id capturé.
+    const match = /^(order|booking|shop_extra|shop)_(.+)$/.exec(ref);
     if (!match) return null;
     return { kind: match[1] as PayableKind, id: match[2] };
   }
@@ -59,6 +61,7 @@ export class PaymentsService {
         ...(kind === 'order' ? { orderId: id } : {}),
         ...(kind === 'booking' ? { bookingId: id } : {}),
         ...(kind === 'shop' ? { shopSubscriptionId: id } : {}),
+        ...(kind === 'shop_extra' ? { shopExtraSlotId: id } : {}),
       },
     });
 
@@ -78,7 +81,7 @@ export class PaymentsService {
   }
 
   private simulatedReturnUrl(kind: PayableKind, id: string): string {
-    if (kind === 'shop') return '/shop?activated=1';
+    if (kind === 'shop' || kind === 'shop_extra') return '/shop?activated=1';
     if (kind === 'order') return '/orders?paid=1';
     return `/profile?paid=1&booking=${id}`;
   }
@@ -96,6 +99,8 @@ export class PaymentsService {
       await this.prisma.booking.update({ where: { id }, data: { status: 'confirmed' } });
     } else if (kind === 'shop') {
       await this.prisma.shopSubscription.update({ where: { id }, data: { status: 'active' } });
+    } else if (kind === 'shop_extra') {
+      await this.prisma.shopExtraSlot.update({ where: { id }, data: { status: 'active' } });
     }
   }
 

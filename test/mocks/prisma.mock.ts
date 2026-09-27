@@ -1,6 +1,6 @@
 import { PrismaService } from '../../src/prisma/prisma.service';
 
-const MODEL_METHODS = ['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'delete', 'upsert'] as const;
+const MODEL_METHODS = ['findUnique', 'findFirst', 'findMany', 'create', 'update', 'updateMany', 'count', 'delete', 'upsert', 'aggregate'] as const;
 
 // Mock Prisma minimal pour les tests unitaires : chaque modèle utilisé
 // (order.create, listing.findUnique, etc.) expose des jest.fn() créés à la

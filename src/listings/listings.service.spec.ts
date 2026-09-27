@@ -69,6 +69,40 @@ describe('ListingsService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it("autorise à dépasser 10 annonces grâce à de la capacité supplémentaire achetée (ShopExtraSlot)", async () => {
+      (prisma as any).shopSubscription.findFirst.mockResolvedValue({ maxListings: 10 });
+      (prisma as any).shopExtraSlot.aggregate.mockResolvedValue({ _sum: { quantity: 5 } }); // +5 annonces achetées
+      (prisma as any).listing.count.mockResolvedValue(12); // au-delà des 10 de base, mais sous 10+5
+      (prisma as any).category.findUnique.mockResolvedValue({ id: 'mode' });
+      (prisma as any).listing.create.mockResolvedValue({ id: 'listing-3' });
+
+      await service.create('seller-1', {
+        categoryId: 'mode',
+        type: BIEN as any,
+        title: 'Sac à main',
+        description: 'Sac à main en cuir',
+        priceFcfa: 12000,
+      });
+
+      expect((prisma as any).listing.create).toHaveBeenCalled();
+    });
+
+    it("refuse malgré la capacité supplémentaire une fois celle-ci également atteinte", async () => {
+      (prisma as any).shopSubscription.findFirst.mockResolvedValue({ maxListings: 10 });
+      (prisma as any).shopExtraSlot.aggregate.mockResolvedValue({ _sum: { quantity: 5 } });
+      (prisma as any).listing.count.mockResolvedValue(15); // 10 + 5, déjà à la limite totale
+
+      await expect(
+        service.create('seller-1', {
+          categoryId: 'mode',
+          type: BIEN as any,
+          title: 'Sac à main',
+          description: 'Sac à main en cuir',
+          priceFcfa: 12000,
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
     it("publie sans abonnement boutique pendant la période promotionnelle de lancement", async () => {
       (promoPeriod.isActive as jest.Mock).mockReturnValue(true);
       (prisma as any).shopSubscription.findFirst.mockResolvedValue(null); // aucun abonnement

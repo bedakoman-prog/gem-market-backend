@@ -189,12 +189,30 @@ export class ListingsService {
   // période promotionnelle de lancement (voir PromoPeriodService) : les
   // vendeurs publient alors gratuitement et sans limite, le séquestre des
   // paiements restant lui actif dès le lancement.
+  //
+  // Au-delà des 10 annonces incluses, un vendeur peut avoir acheté de la
+  // capacité supplémentaire (ShopExtraSlot, 0,5$/jour/annonce — voir
+  // ShopSubscriptionsService.subscribeExtra) : la limite effective est alors
+  // le quota de base + la somme des quantités de tous les ShopExtraSlot
+  // actifs et non expirés.
   private async assertShopQuota(sellerId: string) {
     if (this.promoPeriod.isActive()) return;
 
     const activeSub = await this.prisma.shopSubscription.findFirst({
       where: { sellerId, status: 'active', endDate: { gt: new Date() } },
     });
+
+    if (!activeSub) {
+      throw new ForbiddenException(
+        "Un abonnement Boutique actif est requis pour publier des annonces bien/service/emploi (voir POST /shop/subscribe).",
+      );
+    }
+
+    const extraAgg = await this.prisma.shopExtraSlot.aggregate({
+      where: { sellerId, status: 'active', endDate: { gt: new Date() } },
+      _sum: { quantity: true },
+    });
+    const maxListings = activeSub.maxListings + (extraAgg?._sum?.quantity ?? 0);
 
     const activeCount = await this.prisma.listing.count({
       where: {
@@ -204,12 +222,9 @@ export class ListingsService {
       },
     });
 
-    const maxListings = activeSub?.maxListings ?? 0;
-    if (!activeSub || activeCount >= maxListings) {
+    if (activeCount >= maxListings) {
       throw new ForbiddenException(
-        activeSub
-          ? `Limite de ${maxListings} annonces actives atteinte pour votre boutique.`
-          : "Un abonnement Boutique actif est requis pour publier des annonces bien/service/emploi (voir POST /shop/subscribe).",
+        `Limite de ${maxListings} annonces actives atteinte pour votre boutique (abonnement de base + capacité supplémentaire éventuelle). Achetez des annonces supplémentaires via POST /shop/subscribe-extra.`,
       );
     }
   }

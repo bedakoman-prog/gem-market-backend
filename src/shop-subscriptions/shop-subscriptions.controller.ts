@@ -3,6 +3,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../auth/strategies/jwt.strategy';
 import { ShopSubscriptionsService } from './shop-subscriptions.service';
 import { SubscribeDto } from './dto/subscribe.dto';
+import { SubscribeExtraDto } from './dto/subscribe-extra.dto';
 
 @Controller('shop')
 export class ShopSubscriptionsController {
@@ -16,5 +17,10 @@ export class ShopSubscriptionsController {
   @Post('subscribe')
   subscribe(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubscribeDto) {
     return this.shopService.subscribe(user.id, dto.days, user.phone);
+  }
+
+  @Post('subscribe-extra')
+  subscribeExtra(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubscribeExtraDto) {
+    return this.shopService.subscribeExtra(user.id, dto.quantity, dto.days, user.phone);
   }
 }

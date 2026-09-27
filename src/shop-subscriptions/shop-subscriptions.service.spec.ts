@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { ShopSubscriptionsService } from './shop-subscriptions.service';
 import { PaymentsService } from '../payments/payments.service';
 import { createPrismaMock } from '../../test/mocks/prisma.mock';
@@ -14,7 +15,11 @@ describe('ShopSubscriptionsService', () => {
   beforeEach(() => {
     prisma = createPrismaMock();
     payments = { initiateCollect: jest.fn().mockResolvedValue({ provider: 'cinetpay', paymentUrl: 'https://pay.example', reference: 'shop_sub-1' }) };
-    const config = createConfigMock({ SHOP_PRICE_PER_DAY_USD: '1', SHOP_MAX_LISTINGS: '10' });
+    const config = createConfigMock({
+      SHOP_PRICE_PER_DAY_USD: '1',
+      SHOP_MAX_LISTINGS: '10',
+      SHOP_EXTRA_LISTING_PRICE_PER_DAY_USD: '0.5',
+    });
     // Promo inactive par défaut (pas de LAUNCH_DATE configurée) — le test
     // dédié plus bas l'active explicitement.
     promoPeriod = {
@@ -61,5 +66,58 @@ describe('ShopSubscriptionsService', () => {
       expect.objectContaining({ data: expect.objectContaining({ sellerId: 'seller-1', status: 'expired', maxListings: 10 }) }),
     );
     expect(payments.initiateCollect).toHaveBeenCalledWith('shop', 'sub-1', expect.any(Number), expect.any(String), '+225 07 00 00 00 00');
+  });
+
+  it('ajoute la capacité supplémentaire active (ShopExtraSlot) au maxListings renvoyé par status()', async () => {
+    (prisma as any).shopSubscription.findFirst.mockResolvedValue({ maxListings: 10, endDate: new Date('2027-01-01') });
+    (prisma as any).shopExtraSlot.aggregate.mockResolvedValue({ _sum: { quantity: 5 } });
+    (prisma as any).listing.count.mockResolvedValue(12);
+
+    const status = await service.status('seller-1');
+
+    expect(status.active).toBe(true);
+    expect(status.baseMaxListings).toBe(10);
+    expect(status.extraListings).toBe(5);
+    expect(status.maxListings).toBe(15);
+  });
+
+  it("ne compte pas de capacité supplémentaire sans abonnement de base actif", async () => {
+    (prisma as any).shopSubscription.findFirst.mockResolvedValue(null);
+    (prisma as any).listing.count.mockResolvedValue(0);
+
+    const status = await service.status('seller-1');
+
+    expect((prisma as any).shopExtraSlot.aggregate).not.toHaveBeenCalled();
+    expect(status.extraListings).toBe(0);
+    expect(status.maxListings).toBe(0);
+  });
+
+  it("refuse d'acheter de la capacité supplémentaire sans abonnement de base actif", async () => {
+    (prisma as any).shopSubscription.findFirst.mockResolvedValue(null);
+
+    await expect(service.subscribeExtra('seller-1', 5, 30, '+225 07 00 00 00 00')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect((prisma as any).shopExtraSlot.create).not.toHaveBeenCalled();
+  });
+
+  it('crée un ShopExtraSlot en attente de paiement et lance un encaissement (0,5$/jour/annonce)', async () => {
+    (prisma as any).shopSubscription.findFirst.mockResolvedValue({ id: 'sub-1', maxListings: 10 });
+    (prisma as any).shopExtraSlot.create.mockResolvedValue({ id: 'extra-1' });
+
+    await service.subscribeExtra('seller-1', 5, 30, '+225 07 00 00 00 00');
+
+    expect((prisma as any).shopExtraSlot.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sellerId: 'seller-1', quantity: 5, status: 'expired', pricePerDayUsd: 0.5 }),
+      }),
+    );
+    expect(payments.initiateCollect).toHaveBeenCalledWith(
+      'shop_extra',
+      'extra-1',
+      expect.any(Number),
+      expect.any(String),
+      '+225 07 00 00 00 00',
+    );
   });
 });

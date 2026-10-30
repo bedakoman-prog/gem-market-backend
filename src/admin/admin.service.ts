@@ -30,10 +30,54 @@ async reviewReport(reportId: string, status: 'reviewed' | 'dismissed') {
     return this.prisma.report.update({ where: { id: reportId }, data: { status } });
 }
 
-async rejectListing(listingId: string) {
+// POST /admin/listings/:id/reject — retire une annonce de la publication,
+// qu'elle soit en attente ("draft") ou déjà en ligne ("active") : aucune
+// restriction de statut de départ, contrairement à approveListing. Une fois
+// au statut "rejected", l'annonce disparaît de toute recherche/boutique
+// publique (ListingsService.findAll / findBySeller filtrent sur "active"),
+// sans être supprimée de la base — l'historique (commandes, messages,
+// signalements liés) reste intact. Motif optionnel, conservé pour traçabilité
+// et affiché au vendeur/à l'admin ; voir restoreListing pour annuler.
+async rejectListing(listingId: string, reason?: string) {
     const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
     if (!listing) throw new NotFoundException('Annonce introuvable');
-    return this.prisma.listing.update({ where: { id: listingId }, data: { status: ListingStatus.rejected } });
+    return this.prisma.listing.update({
+          where: { id: listingId },
+          data: { status: ListingStatus.rejected, rejectionReason: reason?.trim() || null },
+    });
+}
+
+// POST /admin/listings/:id/restore — annule un retrait fait par erreur ou
+// après résolution du problème signalé : remet l'annonce en ligne et efface
+// le motif. Ne s'applique qu'aux annonces actuellement "rejected" (pas aux
+// brouillons en attente, qui passent par approveListing).
+async restoreListing(listingId: string) {
+    const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) throw new NotFoundException('Annonce introuvable');
+    if (listing.status !== ListingStatus.rejected) {
+          throw new BadRequestException(
+                  `Impossible de republier : l'annonce est au statut "${listing.status}" (attendu : rejected).`,
+                );
+    }
+    return this.prisma.listing.update({
+          where: { id: listingId },
+          data: { status: ListingStatus.active, rejectionReason: null },
+    });
+}
+
+// GET /admin/listings — toutes les annonces actives ou retirées, pour que
+// l'administration puisse retirer n'importe quelle publication en cours "pour
+// une raison ou une autre" (pas seulement celles déjà signalées). Les
+// brouillons en attente de première validation restent sur leur propre écran
+// (findPendingListings) pour ne pas dupliquer ce flux.
+findAllListings() {
+    return this.prisma.listing.findMany({
+          where: { status: { in: [ListingStatus.active, ListingStatus.rejected] } },
+          include: {
+                  seller: { select: { id: true, name: true, shopName: true, phone: true, verified: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+    });
 }
 
 // GET /admin/listings/pending - file de pre-moderation (voir ListingsService.create,

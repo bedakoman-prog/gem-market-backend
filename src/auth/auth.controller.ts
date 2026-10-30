@@ -8,6 +8,7 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -28,10 +29,17 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // anti-spam — évite le bruteforce téléphone+email
-  @Post('reset-password')
-  resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  @Throttle({ default: { limit: 5, ttl: 60_000 } }) // anti-spam — évite l'énumération téléphone+email
+  @Post('reset-password/request')
+  requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } }) // anti-bruteforce du code OTP à 6 chiffres
+  @Post('reset-password/confirm')
+  confirmPasswordReset(@Body() dto: ResetPasswordDto) {
+    return this.authService.confirmPasswordReset(dto);
   }
 
   @Public()

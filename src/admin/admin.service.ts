@@ -168,4 +168,51 @@ async unsuspendUser(userId: string) {
           select: { id: true, name: true, phone: true, suspended: true },
     });
 }
+
+// GET /admin/sellers — liste des vendeurs (comptes avec au moins une annonce,
+// ou déjà marqués isSeller) pour l'écran de vérification. Les non-vérifiés
+// remontent en premier pour prioriser le travail de modération.
+findSellers() {
+    return this.prisma.user.findMany({
+          where: { OR: [{ isSeller: true }, { listings: { some: {} } }] },
+          select: {
+                  id: true,
+                  name: true,
+                  shopName: true,
+                  phone: true,
+                  email: true,
+                  city: true,
+                  country: true,
+                  verified: true,
+                  createdAt: true,
+                  _count: { select: { listings: true } },
+          },
+          orderBy: [{ verified: 'asc' }, { createdAt: 'desc' }],
+    });
+}
+
+// POST /admin/sellers/:id/verify — à utiliser uniquement après qu'un
+// modérateur a constaté que la boutique/l'annonce existe réellement (appel
+// téléphonique, visite, pièce justificative, etc. — hors périmètre de cette
+// API). Remplace l'ancien comportement où `verified` passait à true tout
+// seul dès l'inscription.
+async verifySeller(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    return this.prisma.user.update({
+          where: { id: userId },
+          data: { verified: true },
+          select: { id: true, name: true, shopName: true, verified: true },
+    });
+}
+
+async unverifySeller(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    return this.prisma.user.update({
+          where: { id: userId },
+          data: { verified: false },
+          select: { id: true, name: true, shopName: true, verified: true },
+    });
+}
 }

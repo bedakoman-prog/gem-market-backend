@@ -25,14 +25,30 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
 
 @Roles(Role.moderator)
     @Post('listings/:id/reject')
-    rejectListing(@Param('id') id: string) {
-          return this.adminService.rejectListing(id);
+    rejectListing(@Param('id') id: string, @Body('reason') reason?: string) {
+          return this.adminService.rejectListing(id, reason);
+    }
+
+@Roles(Role.moderator)
+    @Post('listings/:id/restore')
+    restoreListing(@Param('id') id: string) {
+          return this.adminService.restoreListing(id);
     }
 
 @Roles(Role.moderator)
     @Get('listings/pending')
     pendingListings() {
           return this.adminService.findPendingListings();
+    }
+
+  // Permet de retirer n'importe quelle annonce active (pas seulement celles
+  // en attente ou déjà signalées) — demande utilisateur : "l'administrateur
+  // peut avoir la possibilité de supprimer une publication en cours pour une
+  // raison ou une autre".
+@Roles(Role.moderator)
+    @Get('listings')
+    allListings() {
+          return this.adminService.findAllListings();
     }
 
 @Roles(Role.moderator)

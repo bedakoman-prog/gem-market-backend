@@ -30,14 +30,16 @@ async reviewReport(reportId: string, status: 'reviewed' | 'dismissed') {
     return this.prisma.report.update({ where: { id: reportId }, data: { status } });
 }
 
-// POST /admin/listings/:id/reject — retire une annonce de la publication,
-// qu'elle soit en attente ("draft") ou déjà en ligne ("active") : aucune
-// restriction de statut de départ, contrairement à approveListing. Une fois
-// au statut "rejected", l'annonce disparaît de toute recherche/boutique
-// publique (ListingsService.findAll / findBySeller filtrent sur "active"),
-// sans être supprimée de la base — l'historique (commandes, messages,
-// signalements liés) reste intact. Motif optionnel, conservé pour traçabilité
-// et affiché au vendeur/à l'admin ; voir restoreListing pour annuler.
+// POST /admin/listings/:id/reject (moderator) et POST
+// /admin/listings/:id/takedown (admin, voir AdminController) partagent cette
+// même logique — retire une annonce de la publication, qu'elle soit en
+// attente ("draft") ou déjà en ligne ("active") : aucune restriction de
+// statut de départ, contrairement à approveListing. Une fois au statut
+// "rejected", l'annonce disparaît de toute recherche/boutique publique
+// (ListingsService.findAll / findBySeller filtrent sur "active"), sans être
+// supprimée de la base — l'historique (commandes, messages, signalements
+// liés) reste intact. Motif optionnel, conservé pour traçabilité et affiché
+// au vendeur/à l'admin ; voir restoreListing pour annuler.
 async rejectListing(listingId: string, reason?: string) {
     const listing = await this.prisma.listing.findUnique({ where: { id: listingId } });
     if (!listing) throw new NotFoundException('Annonce introuvable');

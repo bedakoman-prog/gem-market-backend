@@ -8,6 +8,7 @@ import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
 
 interface TokenPair {
   accessToken: string;
@@ -56,7 +57,10 @@ export class AuthService {
     let user = await this.prisma.user.findUnique({ where: { phone } });
     if (!user) {
       user = await this.prisma.user.create({
-        data: { phone, name: name?.trim() || 'Nouvel utilisateur', verified: true },
+        // `verified` reste à false par défaut (voir register() plus haut) :
+        // avoir confirmé son numéro par OTP ne prouve pas que la boutique est
+        // réelle, seule une vérification par un modérateur le fait.
+        data: { phone, name: name?.trim() || 'Nouvel utilisateur' },
       });
     }
     this.assertNotSuspended(user);
@@ -91,7 +95,10 @@ export class AuthService {
         country: dto.country,
         city: dto.city,
         address: dto.address,
-        verified: true,
+        // `verified` n'est plus mis à true automatiquement ici : ce badge
+        // doit uniquement refléter qu'un modérateur a vérifié l'existence
+        // réelle de la boutique/annonce (voir AdminService.verifySeller),
+        // pas le simple fait de s'être inscrit.
       },
     });
 
@@ -122,12 +129,44 @@ export class AuthService {
   // fournie à l'inscription (les deux sont obligatoires sur /auth/register),
   // ce qui reste raisonnable pour ce MVP. Toutes les sessions existantes sont
   // révoquées par sécurité une fois le mot de passe changé.
-  async resetPassword(dto: ResetPasswordDto): Promise<TokenPair & { userId: string }> {
+  // POST /auth/reset-password/request — étape 1/2. Corrige la faille où
+  // phone+email seuls permettaient à n'importe qui de réinitialiser le mot de
+  // passe de n'importe quel compte (aucune preuve que le demandeur est bien le
+  // titulaire). On ne révèle jamais si le compte existe ou non dans la
+  // réponse (message identique dans les deux cas) pour éviter d'énumérer les
+  // comptes enregistrés ; seul le titulaire, qui reçoit le code sur SON
+  // téléphone, peut passer à l'étape 2.
+  async requestPasswordReset(dto: RequestPasswordResetDto): Promise<{ sent: true; expiresInSeconds: number }> {
+    const user = await this.prisma.user.findFirst({ where: { phone: dto.phone, email: dto.email } });
+    if (user) {
+      this.assertNotSuspended(user);
+      const code = this.otp.generateCode();
+      const expiresAt = new Date(Date.now() + this.otp.ttl * 1000);
+      await this.prisma.otpCode.create({ data: { phone: dto.phone, code, expiresAt, userId: user.id } });
+      await this.otp.sendCode(dto.phone, code);
+    }
+    // Réponse identique que le compte existe ou non — évite de laisser un
+    // attaquant vérifier quelles paires phone+email sont inscrites.
+    return { sent: true, expiresInSeconds: this.otp.ttl };
+  }
+
+  // POST /auth/reset-password/confirm — étape 2/2. Exige le code OTP envoyé
+  // à l'étape 1 en plus de phone+email+nouveau mot de passe.
+  async confirmPasswordReset(dto: ResetPasswordDto): Promise<TokenPair & { userId: string }> {
     const user = await this.prisma.user.findFirst({ where: { phone: dto.phone, email: dto.email } });
     if (!user) {
       throw new BadRequestException("Aucun compte ne correspond à ce numéro de téléphone et cet email.");
     }
     this.assertNotSuspended(user);
+
+    const otpRecord = await this.prisma.otpCode.findFirst({
+      where: { phone: dto.phone, code: dto.code, consumed: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!otpRecord) {
+      throw new BadRequestException('Code invalide ou expiré.');
+    }
+    await this.prisma.otpCode.update({ where: { id: otpRecord.id }, data: { consumed: true } });
 
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
     await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });

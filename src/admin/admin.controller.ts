@@ -81,4 +81,26 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
     unsuspendUser(@Param('id') id: string) {
           return this.adminService.unsuspendUser(id);
     }
+
+  // Vérification des vendeurs (section "badge vérifié") : le badge ne doit
+  // être affiché que lorsqu'un modérateur a lui-même constaté que la boutique
+  // / l'annonce existe réellement — jamais automatiquement à l'inscription
+  // (voir AuthService.register / verifyOtp).
+@Roles(Role.moderator)
+    @Get('sellers')
+    findSellers() {
+          return this.adminService.findSellers();
+    }
+
+@Roles(Role.moderator)
+    @Post('sellers/:id/verify')
+    verifySeller(@Param('id') id: string) {
+          return this.adminService.verifySeller(id);
+    }
+
+@Roles(Role.moderator)
+    @Post('sellers/:id/unverify')
+    unverifySeller(@Param('id') id: string) {
+          return this.adminService.unverifySeller(id);
+    }
 }

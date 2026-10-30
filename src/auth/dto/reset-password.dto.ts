@@ -1,14 +1,18 @@
 import { IsEmail, IsString, MinLength } from 'class-validator';
 
-// Réinitialisation "mot de passe oublié" — voir auth.service.ts#resetPassword
-// pour le choix de conception (identité confirmée par téléphone + email,
-// sans envoi d'e-mail réel puisqu'aucun fournisseur n'est branché en Phase 0).
+// Étape 2/2 de la réinitialisation "mot de passe oublié" — voir
+// auth.service.ts#confirmPasswordReset. Le code est celui envoyé par SMS à
+// l'étape 1 (RequestPasswordResetDto) : sans code valide, impossible de
+// changer le mot de passe, même en connaissant phone+email d'un compte.
 export class ResetPasswordDto {
   @IsString()
   phone!: string;
 
   @IsEmail()
   email!: string;
+
+  @IsString()
+  code!: string;
 
   @IsString()
   @MinLength(6)

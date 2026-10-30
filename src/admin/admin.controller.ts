@@ -29,7 +29,12 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
           return this.adminService.rejectListing(id, reason);
     }
 
-@Roles(Role.moderator)
+  // Reservees a admin (pas moderator) a la demande de l'utilisateur : retirer
+  // une annonce deja en ligne, la republier, ou simplement parcourir toutes
+  // les annonces en ligne sont des actions plus sensibles que la moderation
+  // de premiere validation (pendingListings) ou le traitement d'un
+  // signalement (reject), qui restent au niveau moderator ci-dessous.
+@Roles(Role.admin)
     @Post('listings/:id/restore')
     restoreListing(@Param('id') id: string) {
           return this.adminService.restoreListing(id);
@@ -41,14 +46,22 @@ import { SuspendUserDto } from './dto/suspend-user.dto';
           return this.adminService.findPendingListings();
     }
 
-  // Permet de retirer n'importe quelle annonce active (pas seulement celles
-  // en attente ou déjà signalées) — demande utilisateur : "l'administrateur
-  // peut avoir la possibilité de supprimer une publication en cours pour une
-  // raison ou une autre".
-@Roles(Role.moderator)
+@Roles(Role.admin)
     @Get('listings')
     allListings() {
           return this.adminService.findAllListings();
+    }
+
+  // Permet de retirer n'importe quelle annonce active (pas seulement celles
+  // en attente ou déjà signalées) — demande utilisateur : "l'administrateur
+  // peut avoir la possibilité de supprimer une publication en cours pour une
+  // raison ou une autre". Réservé à admin : distinct de /listings/:id/reject
+  // ci-dessous, qui reste accessible à un moderator pour traiter une annonce
+  // en attente ou déjà signalée.
+@Roles(Role.admin)
+    @Post('listings/:id/takedown')
+    takedownListing(@Param('id') id: string, @Body('reason') reason?: string) {
+          return this.adminService.rejectListing(id, reason);
     }
 
 @Roles(Role.moderator)

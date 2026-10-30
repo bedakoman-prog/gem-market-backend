@@ -236,6 +236,10 @@ model Listing {
   description String
   priceFcfa   Int           @map("price_fcfa")
   status      ListingStatus @default(draft)
+  // Motif de retrait par un modérateur (voir AdminService.rejectListing) —
+  // distinct de la fermeture volontaire par le vendeur (ListingsService.remove,
+  // statut "closed", sans motif). Effacé si l'annonce est republiée.
+  rejectionReason String?   @map("rejection_reason")
   // Grille de specs affichée pour les annonces "espace" (ex. surface, capacité...)
   specs       Json?
   // Compteur de vues (page "Annonce" du frontend) — incrémenté à chaque
